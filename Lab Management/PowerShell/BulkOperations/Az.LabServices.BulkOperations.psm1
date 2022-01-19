@@ -471,7 +471,7 @@ function New-AzLabsBulk {
                 }
                 else {
                     # Try to get shared image and then gallery image
-                    $img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState -like "Enabled" -and $_.DisplayName -like $obj.ImageName }
+                    $img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState.ToString() -eq "Enabled" -and $_.DisplayName -like $obj.ImageName }
                     if (-not $img -or @($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image." }
 
                     # Set the TemplateVmState, defaulting to enabled
