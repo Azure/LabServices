@@ -281,33 +281,9 @@ function New-AzLabPlansBulk {
 
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
-
-                #Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                    $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-
+                
+                Import-module AZ.Labservices
+                
                 $input.movenext() | Out-Null
             
                 $obj = $input.current[0]
@@ -367,7 +343,7 @@ function New-AzLabPlansBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs
+            return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
             # while (($jobs | Measure-Object).Count -gt 0) {
             #     # If we have more jobs, wait for 60 sec before checking job status again
             #     Start-Sleep -Seconds 60
@@ -455,31 +431,7 @@ function New-AzLabsBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
 
-                #Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                Import-Module -Name Az.LabServices
                 $input.movenext() | Out-Null
             
                 $obj = $input.current[0]
@@ -533,6 +485,7 @@ function New-AzLabsBulk {
                     }
                     else {
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name TemplateVmState -Value "Enabled"
+                        $obj.TemplateVmState  = "TemplateVM"
                     }
 
                     $idleGracePeriodParameters = @{}
@@ -615,7 +568,6 @@ function New-AzLabsBulk {
                     # In the case of AAD Group, we have to force sync users to update the MaxUsers property
                     if ((Get-Member -InputObject $obj -Name 'AadGroupId') -and ($obj.AadGroupId)) {
                         Write-Host "syncing users from AAD ..."
-                        #Sync-AzLabADUsers -Lab $currentLab | Out-Null
                         Sync-AzLabServicesLabUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName | Out-Null
                     }
 
@@ -657,7 +609,6 @@ function New-AzLabsBulk {
 
                         if ($obj.Invitation) {
                             Write-Host "Sending Invitation emails for $($obj.LabName)."
-                            Write-Host "User $($user | Format-List -Property *)"
                             Send-AzLabServicesUserInvite -ResourceGroupName $obj.ResourceGroupName -LabName $obj.LabName -UserName $user.name -Text $obj.Invitation | Out-Null
                         }
                     }
@@ -721,40 +672,9 @@ function New-AzLabsBulk {
             }
 
             return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
-            # while (($jobs | Measure-Object).Count -gt 0) {
-            #     # If we have more jobs, wait for 60 sec before checking job status again
-            #     Start-Sleep -Seconds 60
 
-            #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-            #     if (($completedJobs | Measure-Object).Count -gt 0) {
-            #         # Write output for completed jobs, but one by one so output doesn't bleed 
-            #         # together, also use "Continue" so we write the error but don't end the outer script
-            #         $completedJobs | ForEach-Object {
-            #             # For each completed job we write the result back to the appropriate Config object, using the "name" field to coorelate
-            #             $jobName = $_.Name
-            #             $jobState = $_.State
-            #             $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1] -and $_.LabName -ieq $jobName.Split('+')[2]}
-
-            #             if (Get-Member -InputObject $config -Name LabResult) {
-            #                 $config.LabResult = $jobState
-            #             }
-            #             else {
-            #                 Add-Member -InputObject $config -MemberType NoteProperty -Name "LabResult" -Value $jobState
-            #             }
-            #             $_ | Receive-Job -ErrorAction Continue
-            #         }
-            #         # Trim off the completed jobs from our list of jobs
-            #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-            #         # Remove the completed jobs from memory
-            #         $completedJobs | Remove-Job
-            #     }
-            # }
-
-            # # Return the objects with an additional property on the result of the operation
-            # return $ConfigObject
         }
 
-        # New-AzLab-Jobs returns the config object with an additional column, we need to leave it on the pipeline
         New-AzLab-Jobs   -ConfigObject $aggregateLabs 
     }
 }
@@ -812,33 +732,7 @@ function Set-AzRoleToLabPlansBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
 
-                #Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
+                Import-Module -Name Az.LabServices
                 # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
                 $input.movenext() | Out-Null
             
@@ -973,32 +867,8 @@ function Remove-AzLabsBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
 
-#Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
+                Import-Module -Name Az.LabServices
                 # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
                 $input.movenext() | Out-Null
             
                 $obj = $input.current[0]
@@ -1039,23 +909,6 @@ function Remove-AzLabsBulk {
             }
 
             return JobManager -currentjobs $jobs
-            # while (($jobs | Measure-Object).Count -gt 0) {
-            #     # If we have more jobs, wait for 60 sec before checking job status again
-            #     Start-Sleep -Seconds 60
-
-            #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-            #     if (($completedJobs | Measure-Object).Count -gt 0) {
-            #         # Write output for completed jobs, but one by one so output doesn't bleed 
-            #         # together, also use "Continue" so we write the error but don't end the outer script
-            #         $completedJobs | ForEach-Object {
-            #             $_ | Receive-Job -ErrorAction Continue
-            #         }
-            #         # Trim off the completed jobs from our list of jobs
-            #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-            #         # Remove the completed jobs from memory
-            #         $completedJobs | Remove-Job
-            #     }
-            # }
         }
 
         Remove-AzLabs-Jobs   -ConfigObject $aggregateLabs
@@ -1108,31 +961,7 @@ function Publish-AzLabsBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
 
-                #Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                Import-Module -Name Az.LabServices
 
                 # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
                 $input.movenext() | Out-Null
@@ -1171,37 +1000,6 @@ function Publish-AzLabsBulk {
             }
 
             return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
-            # while (($jobs | Measure-Object).Count -gt 0) {
-            #     # If we have more jobs, wait for 60 sec before checking job status again
-            #     Start-Sleep -Seconds 60
-
-            #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-            #     if (($completedJobs | Measure-Object).Count -gt 0) {
-            #         # Write output for completed jobs, but one by one so output doesn't bleed 
-            #         # together, also use "Continue" so we write the error but don't end the outer script
-            #         $completedJobs | ForEach-Object {
-            #             # For each completed job we write the result back to the appropriate Config object, using the "name" field to coorelate
-            #             $jobName = $_.Name
-            #             $jobState = $_.State
-            #             $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1] -and $_.LabName -ieq $jobName.Split('+')[2]}
-
-            #             if (Get-Member -InputObject $config -Name PublishResult) {
-            #                 $config.PublishResult = $jobState
-            #             }
-            #             else {
-            #                 Add-Member -InputObject $config -MemberType NoteProperty -Name "PublishResult" -Value $jobState
-            #             }
-
-            #             $_ | Receive-Job -ErrorAction Continue
-            #         }
-            #         # Trim off the completed jobs from our list of jobs
-            #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-            #         # Remove the completed jobs from memory
-            #         $completedJobs | Remove-Job
-            #     }
-            # }
-            # # Return the objects with an additional property on the result of the operation
-            # return $ConfigObject
         }
 
        
@@ -1259,31 +1057,7 @@ function Sync-AzLabADUsersBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
 
-#Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                Import-Module -Name Az.LabServices
 
                 # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
                 $input.movenext() | Out-Null
@@ -1323,22 +1097,6 @@ function Sync-AzLabADUsersBulk {
             }
 
             return JobManager -currentJobs $jobs
-            # while (($jobs | Measure-Object).Count -gt 0) {
-            #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-            #     if (($completedJobs | Measure-Object).Count -gt 0) {
-            #         # Write output for completed jobs, but one by one so output doesn't bleed 
-            #         # together, also use "Continue" so we write the error but don't end the outer script
-            #         $completedJobs | ForEach-Object {
-            #             $_ | Receive-Job -ErrorAction Continue
-            #         }
-            #         # Trim off the completed jobs from our list of jobs
-            #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-            #         # Remove the completed jobs from memory
-            #         $completedJobs | Remove-Job
-            #     }
-            #     # Wait for 60 sec before checking job status again
-            #     Start-Sleep -Seconds 60
-            # }
         }
 
         Sync-AzLabADUsers-Jobs   -ConfigObject $aggregateLabs
@@ -1387,31 +1145,7 @@ function Get-AzLabsRegistrationLinkBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
 
-#Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+                Import-Module -Name Az.LabServices
 
                 $input.movenext() | Out-Null
             
@@ -1446,36 +1180,6 @@ function Get-AzLabsRegistrationLinkBulk {
             }
 
             return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
-            # while (($jobs | Measure-Object).Count -gt 0) {
-            #     # If we have more jobs, wait for 60 sec before checking job status again
-            #     Start-Sleep -Seconds 20
-
-            #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-            #     if (($completedJobs | Measure-Object).Count -gt 0) {
-            #         # Write output for completed jobs, but one by one so output doesn't bleed 
-            #         # together, also use "Continue" so we write the error but don't end the outer script
-            #         $completedJobs | ForEach-Object {
-            #             # For each completed job we write the result back to the appropriate Config object, using the "name" field to coorelate
-            #             $jobName = $_.Name
-            #             $jobState = $_.State
-            #             $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1] -and $_.LabName -ieq $jobName.Split('+')[2]}
-            #             $URL = $_ | Receive-Job -ErrorAction Continue
-
-            #             if (Get-Member -InputObject $config -Name RegistrationLink) {
-            #                 $config.RegistrationLink = $URL
-            #             }
-            #             else {
-            #                 Add-Member -InputObject $config -MemberType NoteProperty -Name "RegistrationLink" -Value $URL
-            #             }
-            #         }
-            #         # Trim off the completed jobs from our list of jobs
-            #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-            #         # Remove the completed jobs from memory
-            #         $completedJobs | Remove-Job
-            #     }
-            # }
-            # Return the objects with an additional property on the result of the operation
-            # return $ConfigObject
         }
 
         # Get-RegistrationLink-Jobs returns the config object with an additional column, we need to leave it on the pipeline
@@ -1519,31 +1223,7 @@ function Reset-AzLabUserQuotaBulk {
 
             Write-Verbose "object inside the Update-AzLabUserQuotaBulk-Job block $obj"
 
-             #Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
-
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+            Import-Module -Name Az.LabServices
 
             Write-Verbose "ConfigObject: $($obj | ConvertTo-Json -Depth 10)"
 
@@ -1604,23 +1284,6 @@ function Reset-AzLabUserQuotaBulk {
             }
 
         JobManager -currentJobs $jobs
-        # while (($jobs | Measure-Object).Count -gt 0) {
-        #     # If we have more jobs, wait for 60 sec before checking job status again
-        #     Start-Sleep -Seconds 10
-
-        #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-        #     if (($completedJobs | Measure-Object).Count -gt 0) {
-        #         # Write output for completed jobs, but one by one so output doesn't bleed 
-        #         # together, also use "Continue" so we write the error but don't end the outer script
-        #         $completedJobs | ForEach-Object {
-        #             $_ | Receive-Job -ErrorAction Continue
-        #         }
-        #         # Trim off the completed jobs from our list of jobs
-        #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-        #         # Remove the completed jobs from memory
-        #         $completedJobs | Remove-Job
-        #     }
-        # }
     }
 }
 
@@ -1671,31 +1334,9 @@ function Confirm-AzLabsBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
 
-                #Test
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-                #$modulePath = Join-Path $path '..\Az.LabServices.psm1'
-                #Import-Module $modulePath
-                # Really?? It got to be the lines below? Doing a ForEach doesn't work ...
-               
+                
+                Import-Module -Name Az.LabServices
 
-                #Import-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                #Import-Module -Name C:\Repos\RBest\azure-powershell\src\LabServices\ -Verbose
-
-                #Remove-Module "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psm1"
-                . "C:\Repos\RBest\azure-powershell\src\LabServices\check-dependencies.ps1" -Isolated -Accounts
-                # Load the latest version of Az.Accounts installed
-                Import-Module -Name Az.Accounts -RequiredVersion (Get-Module -Name Az.Accounts -ListAvailable | Sort-Object -Property Version -Descending)[0].Version
-              
-                $localModulesPath = "C:\Repos\RBest\azure-powershell\src\LabServices\generated\modules"
-                if(Test-Path -Path $localModulesPath) {
-                $env:PSModulePath = "$localModulesPath$([IO.Path]::PathSeparator)$env:PSModulePath"
-                }
-
-                $modulePsd1 = Get-Item -Path "C:\Repos\RBest\azure-powershell\src\LabServices\Az.LabServices.psd1"
-                $modulePath = $modulePsd1.FullName
-                $moduleName = $modulePsd1.BaseName
-                Import-Module -Name $modulePath
-                #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
                 $input.movenext() | Out-Null
             
                 $obj = $input.current[0]
@@ -1717,12 +1358,6 @@ function Confirm-AzLabsBulk {
                     if (-not $plan.SharedGalleryId) {
                         Write-Error "Shared Gallery not attached correctly"
                     }
-
-                    # $images = Get-AzLabServicesPlanImage -LabPlan $plan | Where-Object -Property SharedGalleryId -Match -Value "$($plan.SharedGalleryId)"
-                    # Write-Host "obj: $($obj)"
-                    # if (($images | Measure-Object).Count -ne ($obj.EnableSharedGalleryImages.Split(',') | Measure-Object).Count) {
-                    #     Write-Error "Incorrect number of gallery images enabled on this lab..."
-                    # }
                 }
 
                 # Lab Exists
@@ -1819,38 +1454,6 @@ function Confirm-AzLabsBulk {
             }
 
             return JobManager -currentjobs $jobs -ConfigObject $ConfigObject
-            # while (($jobs | Measure-Object).Count -gt 0) {
-            #     # If we have more jobs, wait for 60 sec before checking job status again
-            #     Write-Host "A: $($jobs)"
-            #     Write-Host "B: $($jobs.GetType())"
-            #     Start-Sleep -Seconds 20
-
-            #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-            #     if (($completedJobs | Measure-Object).Count -gt 0) {
-            #         # Write output for completed jobs, but one by one so output doesn't bleed 
-            #         # together, also use "Continue" so we write the error but don't end the outer script
-            #         $completedJobs | ForEach-Object {
-            #             # For each completed job we write the result back to the appropriate Config object, using the "name" field to coorelate
-            #             $jobName = $_.Name
-            #             $jobState = $_.State
-            #             $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1] -and $_.LabName -ieq $jobName.Split('+')[2]}
-            #             $URL = $_ | Receive-Job -ErrorAction Continue
-
-            #             if (Get-Member -InputObject $config -Name ValidateLabResult) {
-            #                 $config.ValidateLabResult = $jobState
-            #             }
-            #             else {
-            #                 Add-Member -InputObject $config -MemberType NoteProperty -Name "ValidateLabResult" -Value $jobState
-            #             }
-            #         }
-            #         # Trim off the completed jobs from our list of jobs
-            #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-            #         # Remove the completed jobs from memory
-            #         $completedJobs | Remove-Job
-            #     }
-            # }
-            # # Return the objects with an additional property on the result of the operation
-            # return $ConfigObject
         }
 
         # Get-RegistrationLink-Jobs returns the config object with an additional column, we need to leave it on the pipeline
@@ -1870,11 +1473,7 @@ function JobManager {
         [psobject[]]
         $ConfigObject
     )
-            #$ConfigObject | ForEach-Object {
-            #    Write-Verbose "From config: $_"
-            #    $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot, $ExpectedLabState -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
-            #}
-            Write-Host "A"
+
             $jobs = $currentjobs
 
             while (($jobs | Measure-Object).Count -gt 0) {
