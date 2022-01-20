@@ -1,14 +1,19 @@
-# Project
+# Lab Services
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+This repository contains samples extending and improving the Azure Lab Services January 2022 update experience.  The goal is to have a place where everyone can find new and different ways to improve their experience with Lab Services and contribute\improve existing samples.  We will be migrating over existing code from the [Azure-DevTestLab repository](https://github.com/Azure/azure-devtestlab/tree/master/samples/ClassroomLabs) depending on need.  If there is something that you want, feel free to create an issue.
 
-As the maintainer of this project, please make a few updates:
+## Overview
+Below is different overarching areas that we have different samples.
+ 
+### General Scripts
+These are scripts to help either tangentially to Lab Services or in support of Lab Services.
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+### Lab Management
+This code is to help with Lab Management:
+- Creating labs at scale.
+- Customizing labs, templates, or VMs.
+- Managing students, schedules, or roles at scale.
+
 
 ## Contributing
 
