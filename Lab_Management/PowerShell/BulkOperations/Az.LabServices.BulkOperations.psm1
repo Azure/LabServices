@@ -343,7 +343,7 @@ function New-AzLabPlansBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
+            return JobManager -currentJobs $jobs -ResultColumnName "LabPlanResult" -ConfigObject $ConfigObject
             # while (($jobs | Measure-Object).Count -gt 0) {
             #     # If we have more jobs, wait for 60 sec before checking job status again
             #     Start-Sleep -Seconds 60
@@ -671,7 +671,7 @@ function New-AzLabsBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name  ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
+            return JobManager -currentJobs $jobs -ResultColumnName "LabResult" -ConfigObject $ConfigObject
 
         }
 
@@ -908,7 +908,7 @@ function Remove-AzLabsBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentjobs $jobs
+            return JobManager -currentjobs $jobs -ResultColumnName "RemoveLabResult"
         }
 
         Remove-AzLabs-Jobs   -ConfigObject $aggregateLabs
@@ -999,7 +999,7 @@ function Publish-AzLabsBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
+            return JobManager -currentJobs $jobs -ResultColumnName "PublishResult" -ConfigObject $ConfigObject
         }
 
        
@@ -1096,7 +1096,7 @@ function Sync-AzLabADUsersBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name $_.LabName -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs
+            return JobManager -currentJobs $jobs -ResultColumnName "SyncUserResult"
         }
 
         Sync-AzLabADUsers-Jobs   -ConfigObject $aggregateLabs
@@ -1179,7 +1179,7 @@ function Get-AzLabsRegistrationLinkBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs -ConfigObject $ConfigObject
+            return JobManager -currentJobs $jobs -ResultColumnName "RegistrationLinkResult" -ConfigObject $ConfigObject
         }
 
         # Get-RegistrationLink-Jobs returns the config object with an additional column, we need to leave it on the pipeline
@@ -1283,7 +1283,7 @@ function Reset-AzLabUserQuotaBulk {
                 Start-ThreadJob -ScriptBlock $block -ArgumentList $_, $PSScriptRoot -Name $_.LabName -ThrottleLimit $ThrottleLimit
             }
 
-        JobManager -currentJobs $jobs
+        JobManager -currentJobs $jobs -ResultColumnName "ResetQuotaResult"
     }
 }
 
@@ -1453,7 +1453,7 @@ function Confirm-AzLabsBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot, $ExpectedLabState -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit                
             }
 
-            return JobManager -currentjobs $jobs -ConfigObject $ConfigObject
+            return JobManager -currentjobs $jobs -ResultColumnName "ConfirmLabResult" -ConfigObject $ConfigObject
         }
 
         # Get-RegistrationLink-Jobs returns the config object with an additional column, we need to leave it on the pipeline
@@ -1469,6 +1469,10 @@ function JobManager {
         [PSCustomObject[]]
         $currentjobs,
 
+        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string]
+        $ResultColumnName,
+
         [parameter(Mandatory = $false, ValueFromPipeline = $true)]
         [psobject[]]
         $ConfigObject
@@ -1479,41 +1483,45 @@ function JobManager {
             while (($jobs | Measure-Object).Count -gt 0) {
                 # If we have more jobs, wait for 60 sec before checking job status again
                 Start-Sleep -Seconds 20
-
                 $allCompletedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-
                 if (($allCompletedJobs | Measure-Object).Count -gt 0) {
 
                     # Write output for completed jobs, but one by one so output doesn't bleed 
                     # together, also use "Continue" so we write the error but don't end the outer script
-
                     $allCompletedJobs | ForEach-Object {
-
-                        $URL = $_ | Receive-Job -ErrorAction Continue
+                        #$URL = $_ | Receive-Job -ErrorAction Continue
                         if ($ConfigObject) {
                             # For each completed job we write the result back to the appropriate Config object, using the "name" field to coorelate
+
                             $jobName = $_.Name
                             $jobState = $_.State
-                            $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1] -and $_.LabName -ieq $jobName.Split('+')[2]}
-                            if (Get-Member -InputObject $config -Name ValidateLabResult) {
-                                $config.ValidateLabResult = $jobState
+                            if (($jobName.ToCharArray() | Where-Object {$_ -eq '+'} | Measure-Object).Count -gt 1)
+                            {
+                                $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1] -and $_.LabName -ieq $jobName.Split('+')[2]}
+                            } else {
+                                $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1]}
                             }
-                            else {
-                                Add-Member -InputObject $config -MemberType NoteProperty -Name "ValidateLabResult" -Value $jobState
+                            
+                            $config | ForEach-Object {
+                                if (Get-Member -InputObject $config -Name $ResultColumnName) {
+                                    $_.$ResultColumnName = $jobState
+                                }
+                                else {
+                                    Write-Host "AAA: $($_.Title)"
+                                    Add-Member -InputObject $_ -MemberType NoteProperty -Name $ResultColumnName -Value $jobState
+                                }
                             }
                         }
-
+                        $_ | Receive-Job -ErrorAction Continue
                     }
                     # Trim off the completed jobs from our list of jobs
-                   
                     $runningJobs = $jobs | Where-Object {$_.Id -notin $allCompletedJobs.Id}
-
+                    
                     if ($runningJobs) {
                         $jobs = $runningJobs
                     } else {
                         $jobs = $null
                     }
-                    
                     # Remove the completed jobs from memory
                     $allCompletedJobs | Remove-Job
                 }
