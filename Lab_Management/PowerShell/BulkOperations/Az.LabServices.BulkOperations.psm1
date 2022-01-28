@@ -948,7 +948,6 @@ function Publish-AzLabsBulk {
                     Write-Error "Unable to find lab $($obj.LabName)."
                 }
 
-                Write-Host "Lab $($lab.Name) state $($lab.State)"
                 if ($lab.State -ne "Failed"){
                     Publish-AzLabServicesLab -Lab $lab | Out-null
                     Write-Host "Completed publishing of $($obj.LabName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
