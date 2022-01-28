@@ -154,7 +154,7 @@ function Import-LabsCsv {
 
     }
 
-    Write-Verbose ($labs | ConvertTo-Json -Depth 10 | Out-String)
+    Write-Verbose ($labs | ConvertTo-Json -Depth 40 | Out-String)
 
     return ,$labs # PS1 Magick here, the comma is actually needed. Don't ask why.
     # Ok, here is why, PS1 puts each object in the collection on the pipeline one by one
@@ -342,43 +342,7 @@ function New-AzLabPlansBulk {
                 Write-Verbose "From config: $_"
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)") -ThrottleLimit $ThrottleLimit
             }
-
             return JobManager -currentJobs $jobs -ResultColumnName "LabPlanResult" -ConfigObject $ConfigObject
-            # while (($jobs | Measure-Object).Count -gt 0) {
-            #     # If we have more jobs, wait for 60 sec before checking job status again
-            #     Start-Sleep -Seconds 60
-
-            #     $completedJobs = $jobs | Where-Object {($_.State -ieq "Completed") -or ($_.State -ieq "Failed")}
-            #     if (($completedJobs | Measure-Object).Count -gt 0) {
-            #         # Write output for completed jobs, but one by one so output doesn't bleed 
-            #         # together, also use "Continue" so we write the error but don't end the outer script
-            #         $completedJobs | ForEach-Object {
-            #             # For each completed job we write the result back to the appropriate Config object, using the "name" field to coorelate
-            #             $jobName = $_.Name
-            #             $jobState = $_.State
-            #             # NOTE:  we may have many 'config' rows in the CSV associated with a single lab account, we need to udpate all of them
-            #             $config = $ConfigObject | Where-Object {$_.ResourceGroupName -ieq $jobName.Split('+')[0] -and $_.LabPlanName -ieq $jobName.Split('+')[1]}
-            #             $config | ForEach-Object {
-            #                 if (Get-Member -InputObject $_ -Name LabPlanResult) {
-            #                     $_.LabPlanResult = $jobState
-            #                 }
-            #                 else {
-            #                     Add-Member -InputObject $_ -MemberType NoteProperty -Name "LabPlanResult" -Value $jobState
-            #                 }
-            #             }
-
-            #             # Finally, output the results to the UI
-            #             $_ | Receive-Job -ErrorAction Continue
-            #         }
-            #         # Trim off the completed jobs from our list of jobs
-            #         $jobs = $jobs | Where-Object {$_.Id -notin $completedJobs.Id}
-            #         # Remove the completed jobs from memory
-            #         $completedJobs | Remove-Job
-            #     }
-            # }
-
-            # # Return the objects with an additional property on the result of the operation
-            # return $ConfigObject
         }
 
         # Needs to create resources in this order, aka parallelize in these three groups, otherwise we get contentions:
@@ -457,19 +421,11 @@ function New-AzLabsBulk {
                 }
 
                 if ($lab) {
-                    Write-Host "Lab already exists..  Updating properties instead."
-
-                    #Set-AzLab -Lab $lab -MaxUsers $obj.MaxUsers -UserAccessMode $obj.UsageMode -SharedPasswordEnabled $obj.SharedPassword | Out-Null                    
-                    $currentLab = Update-AzLabServicesLab -Name $obj.LabName -ResourceGroupName $obj.ResourceGroupName -SkuCapacity $obj.MaxUsers -SecurityProfileOpenAccess $obj.UsageMode -VirtualMachineProfileUseSharedPassword $obj.SharedPassword
-
-                    # In the case of AAD Group, we have to force sync users to update the MaxUsers property
-                    if ((Get-Member -InputObject $obj -Name 'AadGroupId') -and ($obj.AadGroupId)) {
-                        Write-Host "syncing users from AAD ..."
-                        Sync-AzLabServicesLabUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName 
-                    }
-
+                    Write-Host "Lab already exists."
+                    $currentLab = $lab
                 }
                 else {
+
                     # Try to get shared image and then gallery image
                     $img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState.ToString() -eq "Enabled" -and $_.DisplayName -like $obj.ImageName }
                     if (-not $img -or @($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image." }
@@ -511,7 +467,7 @@ function New-AzLabsBulk {
                     } else {
                         $idleNoConnectGracePeriodParameters.Add("AutoShutdownProfileShutdownWhenNotConnected","Disabled")
                     }
-
+                    
                     $ConnectionProfile = @{}
                     if ($img.OSType -eq "Windows") {
                         $ConnectionProfile.Add("ConnectionProfileClientRdpAccess", "Public")
@@ -523,7 +479,7 @@ function New-AzLabsBulk {
                         $ConnectionProfile.Add("ConnectionProfileClientRdpAccess", "None")
                         $ConnectionProfile.Add("ConnectionProfileClientSshAccess", "Public")
                     }
-
+                    
                     $ImageInformation = @{}
                     if ($img.SharedGalleryId) {
                         $ImageInformation.Add("ImageReferenceId",$img.SharedGalleryId)
@@ -533,11 +489,11 @@ function New-AzLabsBulk {
                         $ImageInformation.Add("ImageReferenceSku",$img.Sku)
                         $ImageInformation.Add("ImageReferenceVersion",$img.Version)
                     }
-
+                    
                     $hashTags = @{}
                     $tempTags = $obj.Tags -split ";"
                     $tempTags | ForEach-Object { $hashTags.Add("Tag$($tempTags.IndexOf($_))", $_)}
-
+                    
                     $NewLabParameters = @{
                         Name = $obj.LabName;
                         ResourceGroupName = $obj.ResourceGroupName;
@@ -559,7 +515,7 @@ function New-AzLabsBulk {
                         Tag = $hashTags;
 
                     }
-
+                    
                     $FullParameterList = $NewLabParameters + $idleGracePeriodParameters + $enableDisconnectOnIdleParameters + $idleNoConnectGracePeriodParameters + $ConnectionProfile + $ImageInformation
                     $currentLab = New-AzLabServicesLab @FullParameterList
                     
@@ -570,7 +526,7 @@ function New-AzLabsBulk {
                         Write-Host "syncing users from AAD ..."
                         Sync-AzLabServicesLabUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName | Out-Null
                     }
-
+                    
                     # If we have any lab owner emails, we need to assign the RBAC permission
                     if ($obj.LabOwnerEmails) {
                         Write-Host "Adding Lab Owners: $($obj.LabOwnerEmails) ."
@@ -578,12 +534,13 @@ function New-AzLabsBulk {
                             # Need to ensure we didn't get an empty string, in case there's an extra delimiter
                             if ($_) {
                                 # Check if Lab Owner role already exists (the role assignment is added by default by the person who runs the script), if not create it
-                                if (-not (Get-AzRoleAssignment -SignInName $_ -Scope $currentLab.id -RoleDefinitionName Owner)) {
-                                    New-AzRoleAssignment -SignInName $_ -Scope $currentLab.id -RoleDefinitionName Owner | Out-Null
+                                $userPrincipalName = (Get-AzAdUser -Mail $_).UserPrincipalName
+                                if (-not (Get-AzRoleAssignment -SignInName $userPrincipalName -Scope $currentLab.id -RoleDefinitionName Owner)) {
+                                    New-AzRoleAssignment -SignInName $userPrincipalName -Scope $currentLab.id -RoleDefinitionName Owner | Out-Null
                                 }
                                 # Check if the lab account reader role already exists, if not create it
-                                if (-not (Get-AzRoleAssignment -SignInName $_ -ResourceGroupName $currentLab.ResourceGroupName -ResourceName $currentLab.LabPlanName -ResourceType "Microsoft.LabServices/LabPlans" -RoleDefinitionName Reader)) {
-                                    New-AzRoleAssignment -SignInName $_ -ResourceGroupName $currentLab.ResourceGroupName -ResourceName $currentLab.LabPlanName -ResourceType "Microsoft.LabServices/LabPlans" -RoleDefinitionName Reader | Out-Null 
+                                if (-not (Get-AzRoleAssignment -SignInName $userPrincipalName -ResourceGroupName $obj.ResourceGroupName -ResourceName $obj.LabPlanName -ResourceType "Microsoft.LabServices/LabPlans" -RoleDefinitionName Reader)) {
+                                    New-AzRoleAssignment -SignInName $userPrincipalName -ResourceGroupName $obj.ResourceGroupName -ResourceName $obj.LabPlanName -ResourceType "Microsoft.LabServices/LabPlans" -RoleDefinitionName Reader | Out-Null 
                                 }
                             }
                         }
@@ -617,7 +574,7 @@ function New-AzLabsBulk {
 
                 if ($obj.Schedules) {
                     Write-Host "Adding Schedules for $($obj.LabName)."
-                    #$obj.Schedules | ForEach-Object { $_ | New-AzLabSchedule -Lab $currentlab } | Out-Null
+
                     foreach($schedule in $obj.Schedules) {
                         
                         $sdate = [datetime]::Parse($schedule.FromDate)
@@ -629,7 +586,6 @@ function New-AzLabsBulk {
                         $endd = [datetime]::New($sdate.Year, $sdate.Month, $sdate.Day, $etime.Hour, $etime.Minute, 0)
                         $fullEnd = $endd.ToString('u')
 
-
                         $edate = [datetime]::Parse($schedule.ToDate.Replace('"',''))
                         $duntil = [datetime]::New($edate.Year, $edate.Month, $edate.Day, 23, 59, 59)
                         $fullUntil = $duntil.ToString('u')
@@ -638,23 +594,29 @@ function New-AzLabsBulk {
                         foreach ($day in ($schedule.WeekDays -Split ";")) {
                             $weekdays += [Microsoft.Azure.PowerShell.Cmdlets.LabServices.Support.WeekDay]$day.Trim("""").ToString()
                         }
-                        
-                        if ($schedule.Frequency -eq "Once") {
-                            New-AzLabServicesSchedule -Lab $currentLab -Name $('Default_' + (Get-Random -Minimum 10000 -Maximum 99999)) -Note $($schedule.Notes) `
-                                -StartAt $fullStart `
-                                -StopAt $fullEnd `
-                                -TimeZoneId $($schedule.TimeZoneId) | Out-Null
-                        } else {
-                            New-AzLabServicesSchedule -Lab $currentLab -Name $('Default_' + (Get-Random -Minimum 10000 -Maximum 99999)) -Note $($schedule.Notes) `
-                                -RecurrencePatternExpirationDate $fullUntil `
-                                -RecurrencePatternFrequency $($schedule.Frequency) `
-                                -RecurrencePatternInterval 1 `
-                                -RecurrencePatternWeekDay $weekdays `
-                                -StartAt $fullStart `
-                                -StopAt $fullEnd `
-                                -TimeZoneId $($schedule.TimeZoneId) | Out-Null
-                        }
+                        # Check if schedules exist.
+                        $zschedules = $currentLab | Get-AzLabServicesSchedule
 
+                        if (!($zschedules | Where-Object {(($startd -ge $_.StartAt) -and ($startd -le $_.StopAt)) -or (($endd -ge $_.StartAt) -and ($endd -le $_.StopAt))})) {
+                        #if (!($currentLab | Get-AzLabServicesSchedule)) {
+                            if ($schedule.Frequency -eq "Once") {
+                                New-AzLabServicesSchedule -Lab $currentLab -Name $('Default_' + (Get-Random -Minimum 10000 -Maximum 99999)) -Note $($schedule.Notes) `
+                                    -StartAt $fullStart `
+                                    -StopAt $fullEnd `
+                                    -TimeZoneId $($schedule.TimeZoneId) | Out-Null
+                            } else {
+                                New-AzLabServicesSchedule -Lab $currentLab -Name $('Default_' + (Get-Random -Minimum 10000 -Maximum 99999)) -Note $($schedule.Notes) `
+                                    -RecurrencePatternExpirationDate $fullUntil `
+                                    -RecurrencePatternFrequency $($schedule.Frequency) `
+                                    -RecurrencePatternInterval 1 `
+                                    -RecurrencePatternWeekDay $weekdays `
+                                    -StartAt $fullStart `
+                                    -StopAt $fullEnd `
+                                    -TimeZoneId $($schedule.TimeZoneId) | Out-Null
+                            }
+                        } else {
+                            Write-Host "Duplicate schedules not added on lab $($currentLab.Name)"
+                        }
                     }
 
                     Write-Host "Added all schedules."
@@ -986,8 +948,13 @@ function Publish-AzLabsBulk {
                     Write-Error "Unable to find lab $($obj.LabName)."
                 }
 
-                Publish-AzLabServicesLab -Lab $lab | Out-null
-                Write-Host "Completed publishing of $($obj.LabName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
+                Write-Host "Lab $($lab.Name) state $($lab.State)"
+                if ($lab.State -ne "Failed"){
+                    Publish-AzLabServicesLab -Lab $lab | Out-null
+                    Write-Host "Completed publishing of $($obj.LabName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
+                } else {
+                    Write-Host "Unable to publish lab $($lab.Name) state is $($lab.State)"
+                }
 
             }
 
@@ -1225,7 +1192,7 @@ function Reset-AzLabUserQuotaBulk {
 
             Import-Module -Name Az.LabServices
 
-            Write-Verbose "ConfigObject: $($obj | ConvertTo-Json -Depth 10)"
+            Write-Verbose "ConfigObject: $($obj | ConvertTo-Json -Depth 40)"
 
             $la = Get-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabPlanName)
             if (-not $la -or @($la).Count -ne 1) { Write-Error "Unable to find lab plan $($obj.LabPlanName)."}
@@ -1479,7 +1446,6 @@ function JobManager {
     )
 
             $jobs = $currentjobs
-
             while (($jobs | Measure-Object).Count -gt 0) {
                 # If we have more jobs, wait for 60 sec before checking job status again
                 Start-Sleep -Seconds 20
@@ -1507,7 +1473,6 @@ function JobManager {
                                     $_.$ResultColumnName = $jobState
                                 }
                                 else {
-                                    Write-Host "AAA: $($_.Title)"
                                     Add-Member -InputObject $_ -MemberType NoteProperty -Name $ResultColumnName -Value $jobState
                                 }
                             }
