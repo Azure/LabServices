@@ -40,7 +40,7 @@ function Import-LabsCsv {
         $labs | Where-Object {$_.LabAccountName} | Add-Member -MemberType AliasProperty -Name LabPlanName -Value LabAccountName -PassThru
     }
     # Validate that if a resource group\lab account appears more than once in the csv, that it also has the same SharedGalleryId and EnableSharedGalleryImages values.
-    $plan = $labs | Select-Object -Property ResourceGroupName, LabPlanName, SharedGalleryId, EnableSharedGalleryImages | Sort-Object -Property ResourceGroupName, LabPlanName
+    $plan = $labs | Select-Object -Property ResourceGroupName, LabPlanName, SharedGalleryId, EnableSharedGalleryImages, Tags | Sort-Object -Property ResourceGroupName, LabPlanName
     $planNames = $plan | Select-Object -Property ResourceGroupName, LabPlanName -Unique
   
     foreach ($planName in $planNames){
@@ -256,13 +256,14 @@ function New-AzLabPlansBulk {
                 $ConfigObject
             )
 
-            $Rgs = $ConfigObject | Select-Object -Property ResourceGroupName, Location -Unique
+            $Rgs = $ConfigObject | Select-Object -Property ResourceGroupName, Location, Tags -Unique
             Write-Verbose "Looking for the following resource groups:"
             $Rgs | Format-Table | Out-String | Write-Verbose
             
             $Rgs | ForEach-Object {
                 if (-not (Get-AzResourceGroup -ResourceGroupName $_.ResourceGroupName -EA SilentlyContinue)) {
-                    New-AzResourceGroup -ResourceGroupName $_.ResourceGroupName -Location $_.Location | Out-null
+                    $taghash = ConvertFrom-StringData -StringData ($_.Tags.Replace(";","`r`n"))
+                    New-AzResourceGroup -ResourceGroupName $_.ResourceGroupName -Location $_.Location -Tags $taghash | Out-null
                     Write-Host "$($_.ResourceGroupName) resource group didn't exist. Created it." -ForegroundColor Green
                 }
             }
@@ -295,7 +296,7 @@ function New-AzLabPlansBulk {
                 
                 if ($obj.SharedGalleryId){
 
-                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -SharedGalleryId $obj.SharedGalleryId -Location $obj.Location -AllowedRegion @($obj.Location)
+                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -SharedGalleryId $obj.SharedGalleryId -Location $obj.Location -AllowedRegion @($obj.Location) -Tag (ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n")) )
 
                     # This will enable the SIG images explicitly listed in the csv.  
                     # For SIG images that are *not* listed in the csv, this will automatically disable them.
@@ -324,15 +325,15 @@ function New-AzLabPlansBulk {
 
                     Write-Verbose "Completed creation of $($obj.SharedGalleryId), total duration $(((Get-Date) - $StartTime).TotalSeconds) seconds"
                 } else {
-                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -Location $obj.Location -AllowedRegion @($obj.Location)
+                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -Location $obj.Location -AllowedRegion @($obj.Location) -Tag (ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n")) )
                 }
 
                 Write-Host "Completed creation of $($obj.LabPlanName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
             }
 
             Write-Host "Starting creation of all lab plans in parallel. Can take a while."
-            $plans = $ConfigObject | Select-Object -Property ResourceGroupName, LabPlanName, Location, SharedGalleryId, EnableSharedGalleryImages -Unique
-            
+            $plans = $ConfigObject | Select-Object -Property ResourceGroupName, LabPlanName, Location, SharedGalleryId, EnableSharedGalleryImages, Tags -Unique
+
             Write-Verbose "Operating on the following Lab Accounts:"
             Write-Verbose ($plans | Format-Table | Out-String)
 
@@ -427,7 +428,7 @@ function New-AzLabsBulk {
                 else {
 
                     # Try to get shared image and then gallery image
-                    $img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState.ToString() -eq "Enabled" -and $_.DisplayName -like $obj.ImageName }
+                    $img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState.ToString() -eq "Enabled" -and $_.DisplayName -eq $obj.ImageName }
                     if (-not $img -or @($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image." }
 
                     # Set the TemplateVmState, defaulting to enabled
@@ -490,9 +491,10 @@ function New-AzLabsBulk {
                         $ImageInformation.Add("ImageReferenceVersion",$img.Version)
                     }
                     
-                    $hashTags = @{}
-                    $tempTags = $obj.Tags -split ";"
-                    $tempTags | ForEach-Object { $hashTags.Add("Tag$($tempTags.IndexOf($_))", $_)}
+                    #$hashTags = @{}
+                    #$tempTags = $obj.Tags -split ";"
+                    #$tempTags | ForEach-Object { $hashTags.Add("Tag$($tempTags.IndexOf($_))", $_)}
+                    $hashTags = ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n")) 
                     
                     $NewLabParameters = @{
                         Name = $obj.LabName;
@@ -1472,7 +1474,7 @@ function JobManager {
                                     $_.$ResultColumnName = $jobState
                                 }
                                 else {
-                                    Add-Member -InputObject $_ -MemberType NoteProperty -Name $ResultColumnName -Value $jobState
+                                    Add-Member -InputObject $_ -MemberType NoteProperty -Name $ResultColumnName -Value $jobState -Force
                                 }
                             }
                         }
