@@ -62,8 +62,8 @@ Write-Host "Creating lab plan $labPlanName"
 $labPlan  = New-AzLabServicesLabPlan -ResourceGroupName $rgName -Name $labPlanName -Location $Location -AllowedRegion @($Location)
 
 # Ensure that image needed for the VM is available
-$imageName = "Windows Server 2022 Datacenter"
-$sku = "2022-DataCenter-g2"
+$imageName = "Windows Server 2022 Datacenter (Gen2)"
+$sku = "2022-datacenter-g2"
 Write-Host "Locating '$imageName' image for use in template virtual machine"
 $imageObject = $labPlan | Get-AzLabServicesPlanImage | Where-Object {$_.DisplayName -EQ $imageName -and $_.Sku -EQ $sku -and (-not [string]::IsNullOrEmpty($_.EnabledState))} | Where-Object -Property EnabledState -eq "Enabled"
 
