@@ -80,25 +80,22 @@ try {
     
     . ".\Utils.ps1"
     
-    Write-Output "Importing AzLab Module"
-    Import-AzLabModule -Update
+    Write-Output "Importing Az.LabServices Module"
+    Import-Module Az.LabServices -Force
     
     Write-Output "Getting information on the currently running Template VM"
-    $templateVm = Get-AzLabCurrentTemplateVm
-    
-    $lab = $templateVm | Get-AzLabForVm
-    
+    $templateVm = Get-AzLabCurrentVm
+
+    $parsedId = $templateVm.Id.Split("/")
+   
     Write-Output "Details of the Lab for the template VM $env:COMPUTERNAME"
-    Write-Output "Name of the Lab: $($lab.Name)"
-    Write-Output "Name of the Lab Account: $($lab.LabAccountName)"
-    Write-Output "Resource group of the Lab Account: $($lab.ResourceGroupName)"
+    Write-Output "Name of the Lab: $($parsedId[8])"
     
     # Register Rename VM script to run at next startup
     Write-LogFile "Registering the '$JoinAzLabADStudentRenameVmScriptName' script to run at next startup"
     Register-AzLabADStudentTask `
-        -LabAccountResourceGroupName $lab.ResourceGroupName `
-        -LabAccountName $lab.LabAccountName `
-        -LabName $lab.Name `
+        -LabResourceGroupName $parsedId[4] `
+        -LabName $parsedId[8] `
         -DomainServiceAddress $DomainServiceAddress `
         -Domain $Domain `
         -LocalUser $LocalUser `
@@ -111,7 +108,7 @@ try {
 
     Write-Output "Publishing the Lab"
     Write-Warning "Warning: Publishing the Lab may take up to 1 hour"
-    $lab | Publish-AzLab
+    Publish-AzLabServicesLab -Name $parsedId[8] -ResourceGroupName $parsedId[4]
     
     # Behavior of the Template VM from here on out:
     # 1) After 10 minutes, VM is shutdown

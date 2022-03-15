@@ -9,9 +9,9 @@ Some Utility functions used by the domain join scripts.
 #>
 
 # AzLab Module dependency
-$AzLabServicesModuleName = "Az.LabServices.psm1"
-$AzLabServicesModuleSource = "https://raw.githubusercontent.com/Azure/azure-devtestlab/master/samples/ClassroomLabs/Modules/Library/Az.LabServices.psm1"
-$global:AzLabServicesModulePath = Join-Path -Path (Resolve-Path ./) -ChildPath $AzLabServicesModuleName
+#$AzLabServicesModuleName = "Az.LabServices.psm1"
+#$AzLabServicesModuleSource = "https://raw.githubusercontent.com/Azure/azure-devtestlab/master/samples/ClassroomLabs/Modules/Library/Az.LabServices.psm1"
+#$global:AzLabServicesModulePath = Join-Path -Path (Resolve-Path ./) -ChildPath $AzLabServicesModuleName
 
 # TODO Download secondary scripts
 $global:JoinAzLabADStudentRenameVmScriptName = "Join-AzLabADStudent_RenameVm.ps1"
@@ -19,41 +19,6 @@ $global:JoinAzLabADStudentJoinVmScriptName = "Join-AzLabADStudent_JoinVm.ps1"
 $global:JoinAzLabADStudentAddStudentScriptName = "Join-AzLabADStudent_AddStudent.ps1"
 $global:JoinAzLabADStudentEnrollMDMScriptName = "Join-AzLabADStudent_EnrollMDM.ps1"
 
-function Import-RemoteModule {
-    param(
-        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true, HelpMessage = "Web source of the psm1 file")]
-        [ValidateNotNullOrEmpty()]
-        [string] $Source,
-        [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true, HelpMessage = "Name of the module")]
-        [ValidateNotNullOrEmpty()]
-        [string] $ModuleName,
-        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true, HelpMessage = "Whether to update and replace an existing psm1 file")]
-        [switch]
-        $Update = $false
-    )
-  
-    $modulePath = Join-Path -Path (Resolve-Path ./) -ChildPath $ModuleName
-  
-    if ($Update -Or !(Test-Path -Path $modulePath)) {
-
-        Remove-Item -Path $modulePath -ErrorAction SilentlyContinue
-
-        $WebClient = New-Object System.Net.WebClient
-        $WebClient.DownloadFile($Source, $modulePath)
-    }
-    
-    Import-Module $modulePath
-}
-  
-function Import-AzLabModule {
-    param(
-        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true, HelpMessage = "Whether to update an existing Az.LabServices module")]
-        [switch]
-        $Update = $false
-    )
-
-    Import-RemoteModule -Source $AzLabServicesModuleSource -ModuleName $AzLabServicesModuleName -Update:$Update
-}
 
 function Write-LogFile {
     param(
@@ -183,12 +148,8 @@ function Register-AzLabADStudentTask {
     param(
         [parameter(Mandatory = $true, HelpMessage = "Resource group name of Lab Account.", ValueFromPipeline = $true)]
         [ValidateNotNullOrEmpty()]
-        $LabAccountResourceGroupName,
+        $LabResourceGroupName,
 
-        [parameter(Mandatory = $true, HelpMessage = "Name of Lab Account.", ValueFromPipeline = $true)]
-        [ValidateNotNullOrEmpty()]
-        $LabAccountName,
-    
         [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true, HelpMessage = "Name of Lab.")]
         [ValidateNotNullOrEmpty()]
         $LabName,
@@ -239,8 +200,7 @@ function Register-AzLabADStudentTask {
 
     $nextScriptArgs =
 @"
--LabAccountResourceGroupName '$($LabAccountResourceGroupName)'
--LabAccountName '$($LabAccountName)'
+-LabResourceGroupName '$($LabResourceGroupName)'
 -LabName '$($LabName)'
 -DomainServiceAddress $domainServiceAddressStr
 -Domain '$Domain'
@@ -288,44 +248,36 @@ function Get-UniqueStudentVmName {
     return "M" + $StudentVmId + $TemplateVmId
 }
 
-function Get-AzLabCurrentTemplateVm {
+function Get-AzLabCurrentVm {
     # The Azure Instance Metadata Service (IMDS) provides information about currently running virtual machine instances
-    #$computeVmId = Invoke-RestMethod -Headers @{"Metadata" = "true" } -URI "http://169.254.169.254/metadata/instance/compute/vmId?api-version=2019-11-01&format=text" -Method Get -TimeoutSec 5 
     $computeVM = Invoke-RestMethod -Headers @{"Metadata"="true"} -Method GET -Uri "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -TimeoutSec 5
 
-    # Correlate by VM id
-    #$templateVm = Get-AzLabAccount | Get-AzLab | Get-AzLabTemplateVM | Where-Object { $_.properties.resourceSettings.referenceVm.computeVmId -eq $computeVmId }
     $temp = $computeVm.compute.resourceId.Split("/")
-    $id = "/subscriptions/" + $computeVM.compute.tagsList.GetValue(2).Value + "/resourceGroups/" + $computeVM.compute.tagsList.GetValue(0).Value + "/providers/Microsoft.LabServices/labs/" + $computeVM.compute.tagsList.GetValue(1).Value + "/virtualMachines/" +  $temp.GetValue($temp.Length -1)
+    Write-LogFile "Debug: Get VM $($temp[10])"
+    $LSvm = Get-AzLabServicesVM -SubscriptionId $computeVM.compute.tagsList[2].value -ResourceGroupName $computeVM.compute.tagsList[1].value -LabName $computeVM.compute.tagsList[0].value -Name $temp[10]
 
-    $vm = Get-AzLabServicesLabPlan | Get-AzLabServicesLab | Get-AzLabServicesVM -ResourceId $id
-    if ($vm.VMType -ne "Template") {
-        # Script was run from a Student VM or another VM outside of this Lab.
-        throw "Script must be run from the Template VM"
+    if (!($LSvm)) {
+        Write-LogFile "Missing VM"
     }
 
-    return $templateVm
+    return $LSvm
 }
 
-# Ideally to be used only once from the Template if we don't uniquely know the Lab. O(LA*LAB*VM)
-function Get-AzLabCurrentStudentVm {
+
+function Check-AzLabCurrentVmIsTemplate {
+
     # The Azure Instance Metadata Service (IMDS) provides information about currently running virtual machine instances
-    #$computeVmId = Invoke-RestMethod -Headers @{"Metadata" = "true" } -URI "http://169.254.169.254/metadata/instance/compute/vmId?api-version=2019-11-01&format=text" -Method Get -TimeoutSec 5 
     $computeVM = Invoke-RestMethod -Headers @{"Metadata"="true"} -Method GET -Uri "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -TimeoutSec 5
-    # Correlate by VM id
-    #$studentVm = Get-AzLabAccount | Get-AzLab | Get-AzLabVm | Where-Object { $_.properties.resourceSets.computeVmId -eq $computeVmId }
+
     $temp = $computeVm.compute.resourceId.Split("/")
-    $id = "/subscriptions/" + $computeVM.compute.tagsList.GetValue(2).Value + "/resourceGroups/" + $computeVM.compute.tagsList.GetValue(0).Value + "/providers/Microsoft.LabServices/labs/" + $computeVM.compute.tagsList.GetValue(1).Value + "/virtualMachines/" +  $temp.GetValue($temp.Length -1)
-
-    $vm = Get-AzLabServicesLabPlan | Get-AzLabServicesLab | Get-AzLabServicesVM -ResourceId $id
-
-    if ($vm.VMType -eq "Template") {
-        # Script was run from a Student VM or another VM outside of this Lab.
-        throw "Script must be run from a Student VM"
+    $retValue = $false
+    if ($temp[8] -eq "vmss-template") {
+        $retValue = $true
     }
 
-    return $studentVm
+    return $retValue
 }
+
 
 # To be used from the Student VM where we already know the Lab. O(VM)
 function Get-AzLabCurrentStudentVmFromLab {
@@ -334,48 +286,84 @@ function Get-AzLabCurrentStudentVmFromLab {
         [ValidateNotNullOrEmpty()]
         $Lab
     )
-    # The Azure Instance Metadata Service (IMDS) provides information about currently running virtual machine instances
-    #$computeVmId = Invoke-RestMethod -Headers @{"Metadata" = "true" } -URI "http://169.254.169.254/metadata/instance/compute/vmId?api-version=2019-11-01&format=text" -Method Get -TimeoutSec 5 
-    $computeVM = Invoke-RestMethod -Headers @{"Metadata"="true"} -Method GET -Uri "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -TimeoutSec 5
-    # Correlate by VM id
-    #$studentVm = $Lab | Get-AzLabVm | Where-Object { $_.properties.resourceSets.computeVmId -eq $computeVmId }
-    $temp = $computeVm.compute.resourceId.Split("/")
-    $id = "/subscriptions/" + $computeVM.compute.tagsList.GetValue(2).Value + "/resourceGroups/" + $computeVM.compute.tagsList.GetValue(0).Value + "/providers/Microsoft.LabServices/labs/" + $computeVM.compute.tagsList.GetValue(1).Value + "/virtualMachines/" +  $temp.GetValue($temp.Length -1)
 
-    $vm = $Lab | Get-AzLabServicesVM -ResourceId $id
+    $vm = Get-AzLabCurrentVm
 
-    if ($vm.VMType -eq "Template") {
-        # Script was run from a Student VM or another VM outside of this Lab.
-        throw "Script must be run from a Student VM"
+    if (!([string]::IsNullOrEmpty($vm.ClaimedByUserId))) {
+        $user = Get-AzLabServicesUser -ResourceId $vm.ClaimedByUserId
     }
 
-    return $studentVm
+
+    return $user.Email
 }
 
-function Get-AzLabUserForCurrentVm {
-    param(
-        [parameter(Mandatory = $true, ValueFromPipeline = $true, HelpMessage = "Lab")]
-        [ValidateNotNullOrEmpty()]
-        $Lab,
 
-        [parameter(Mandatory = $true, ValueFromPipeline = $true, HelpMessage = "VM claimed by user")]
-        [ValidateNotNullOrEmpty()]
-        $Vm
-    )
+# Ideally to be used only once from the Template if we don't uniquely know the Lab. O(LA*LAB*VM)
+#function Get-AzLabCurrentStudentVm {
+#    # The Azure Instance Metadata Service (IMDS) provides information about currently running virtual machine instances
+#    #$computeVmId = Invoke-RestMethod -Headers @{"Metadata" = "true" } -URI "http://169.254.169.254/metadata/instance/compute/vmId?api-version=2019-11-01&format=text" -Method Get -TimeoutSec 5 
+#    $computeVM = Invoke-RestMethod -Headers @{"Metadata"="true"} -Method GET -Uri "http://169.254.169.254/metadata/instance?api-version=2021-02-01" -TimeoutSec 5
+#    # Correlate by VM id
+#    #$studentVm = Get-AzLabAccount | Get-AzLab | Get-AzLabVm | Where-Object { $_.properties.resourceSets.computeVmId -eq $computeVmId }
+#    $temp = $computeVm.compute.resourceId.Split("/")
+#    $id = "/subscriptions/" + $computeVM.compute.tagsList.GetValue(2).Value + "/resourceGroups/" + $computeVM.compute.tagsList.GetValue(0).Value + "/providers/Microsoft.LabServices/labs/" + $computeVM.compute.tagsList.GetValue(1).Value + "/virtualMachines/" +  $temp.GetValue($temp.Length -1)
+#
+#    $vm = Get-AzLabServicesLabPlan | Get-AzLabServicesLab | Get-AzLabServicesVM -ResourceId $id
+#
+#    if ($vm.VMType -eq "Template") {
+#        # Script was run from a Student VM or another VM outside of this Lab.
+#        throw "Script must be run from a Student VM"
+#    }
+#
+#    return $studentVm
+#}
 
-    $Lab | Get-AzLabUser | Where-Object { $_.name -eq $Vm.properties.claimedByUserPrincipalId }
-}
+# To be used from the Student VM where we already know the Lab. O(VM)
+#function Get-AzLabCurrentStudentVmFromLab {
+#    param(
+#        [parameter(Mandatory = $true, ValueFromPipeline = $true, HelpMessage = "VM claimed by user")]
+#        [ValidateNotNullOrEmpty()]
+#        $Lab
+#    )
+#
+#    $vm = Get-A
+#    $temp = $computeVm.compute.resourceId.Split("/")
+#    $id = "/subscriptions/" + $computeVM.compute.tagsList.GetValue(2).Value + "/resourceGroups/" + $computeVM.compute.tagsList.GetValue(0).Value + "/providers/Microsoft.LabServices/labs/" + $computeVM.compute.tagsList.GetValue(1).Value + "/virtualMachines/" +  $temp.GetValue($temp.Length -1)
+#
+#    $vm = $Lab | Get-AzLabServicesVM -ResourceId $id
+#
+#    if ($vm.VMType -eq "Template") {
+#        # Script was run from a Student VM or another VM outside of this Lab.
+#        throw "Script must be run from a Student VM"
+#    }
+#
+#    return $studentVm
+#}
 
-function Get-AzLabTemplateVmName {
-    param(
-        [parameter(Mandatory = $true, ValueFromPipeline = $true, HelpMessage = "Template VM")]
-        [ValidateNotNullOrEmpty()]
-        $TemplateVm
-    )
+#function Get-AzLabUserForCurrentVm {
+#    param(
+#        [parameter(Mandatory = $true, ValueFromPipeline = $true, HelpMessage = "Lab")]
+#        [ValidateNotNullOrEmpty()]
+#        $Lab,
+#
+#        [parameter(Mandatory = $true, ValueFromPipeline = $true, HelpMessage = "VM claimed by user")]
+#        [ValidateNotNullOrEmpty()]
+#        $Vm
+#    )
+#
+#    $Lab | Get-AzLabUser | Where-Object { $_.name -eq $Vm.properties.claimedByUserPrincipalId }
+#}
 
-    $results = $TemplateVm.properties.resourceSettings.referenceVm.vmResourceId | Select-String -Pattern '([^/]*)$'
-    $results.Matches.Value | Select-Object -Index 0
-}
+#function Get-AzLabTemplateVmName {
+#    param(
+#        [parameter(Mandatory = $true, ValueFromPipeline = $true, HelpMessage = "Template VM")]
+#        [ValidateNotNullOrEmpty()]
+#        $TemplateVm
+#    )
+#
+#    $results = $TemplateVm.properties.resourceSettings.referenceVm.vmResourceId | Select-String -Pattern '([^/]*)$'
+#    $results.Matches.Value | Select-Object -Index 0
+#}
 
 function Get-AzureADJoinStatus {
     $status = dsregcmd /status 

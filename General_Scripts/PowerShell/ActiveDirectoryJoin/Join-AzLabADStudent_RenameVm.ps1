@@ -7,10 +7,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 .SYNOPSIS
 This script is part of the scripts chain for joining a student VM to an Active Directory domain. It renames the computer with a unique ID. Then it schedules the actual join script to run after reboot.
 .LINK https://docs.microsoft.com/en-us/azure/lab-services/classroom-labs/how-to-connect-peer-virtual-network
-.PARAMETER LabAccountResourceGroupName
+.PARAMETER LabResourceGroupName
 Resource group name of Lab Account.
-.PARAMETER LabAccountName
-Name of Lab Account.
 .PARAMETER LabName
 Name of Lab.
 .PARAMETER DomainServiceAddress
@@ -34,8 +32,7 @@ Name of the task this script is run from (optional).
 .NOTES
 .EXAMPLE
 . ".\Join-AzLabADStudent_RenameVm.ps1" `
-    -LabAccountResourceGroupName 'labaccount-rg' `
-    -LabAccountName 'labaccount' `
+    -LabResourceGroupName 'labaccount-rg' `
     -LabName 'Mobile App Development' `
     -DomainServiceAddress '10.0.23.5','10.0.23.6' `
     -Domain 'contoso.com' `
@@ -49,14 +46,10 @@ Name of the task this script is run from (optional).
 
 [CmdletBinding()]
 param(
-    [parameter(Mandatory = $true, HelpMessage = "Resource group name of Lab Account.", ValueFromPipeline = $true)]
+    [parameter(Mandatory = $true, HelpMessage = "Resource group name of Lab.", ValueFromPipeline = $true)]
     [ValidateNotNullOrEmpty()]
-    $LabAccountResourceGroupName,
-
-    [parameter(Mandatory = $true, HelpMessage = "Name of Lab Account.", ValueFromPipeline = $true)]
-    [ValidateNotNullOrEmpty()]
-    $LabAccountName,
-  
+    $LabResourceGroupName,
+ 
     [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true, HelpMessage = "Name of Lab.")]
     [ValidateNotNullOrEmpty()]
     $LabName,
@@ -109,32 +102,19 @@ try {
 
     . ".\Utils.ps1"
     
-    Write-LogFile "Importing AzLab Module"
-    Import-AzLabModule
+    Write-LogFile "Importing Az.LabServices Module"
+    Import-Module Az.LabServices -Force
     
     Write-LogFile "Getting information on the currently running Student VM"
-    $labAccount = Get-AzLabAccount -ResourceGroupName $LabAccountResourceGroupName -LabAccountName $LabAccountName
-    $lab = $labAccount | Get-AzLab -LabName $LabName
-    try {
-        $studentVm = $lab | Get-AzLabCurrentStudentVmFromLab
-    }
-    catch {
-        # Startup from Template VM. We ignore this event.
-        Write-LogFile "Ignoring startup from Template VM"    
+
+    if (Check-AzLabCurrentVmIsTemplate) {
+        Write-LogFile "Rename will not be run on the template vm."
         exit
     }
     
-    Write-LogFile "Details of the Lab for the student VM '$($studentVm.name)'"
-    Write-LogFile "Name of the Lab: '$($lab.Name)'"
-    Write-LogFile "Name of the Lab Account: '$($lab.LabAccountName)'"
-    Write-LogFile "Resource group of the Lab Account: '$($lab.ResourceGroupName)'"
-    
-    $templateVm = $lab | Get-AzLabTemplateVm
-    $templateVmName = $templateVm | Get-AzLabTemplateVmName
-    
     $computerName = (Get-WmiObject Win32_ComputerSystem).Name
     # Generate a new unique name for this computer
-    $newComputerName = Get-UniqueStudentVmName -TemplateVmName $templateVmName -StudentVmName $studentVm.name
+    $newComputerName = "AD-" + [guid]::NewGuid().ToString() #Get-UniqueStudentVmName -TemplateVmName $templateVmName -StudentVmName $studentVm.name
     if ($newComputerName.StartsWith($computerName, 'CurrentCultureIgnoreCase')) {
         Write-LogFile "Student VM has already been renamed"
         exit
@@ -148,9 +128,8 @@ try {
     # Register Join VM script to run at next startup
     Write-LogFile "Registering the '$JoinAzLabADStudentJoinVmScriptName' script to run at next startup"
     Register-AzLabADStudentTask `
-        -LabAccountResourceGroupName $lab.ResourceGroupName `
-        -LabAccountName $lab.LabAccountName `
-        -LabName $lab.Name `
+        -LabResourceGroupName $LabResourceGroupName `
+        -LabName $LabName `
         -DomainServiceAddress $DomainServiceAddress `
         -Domain $Domain `
         -LocalUser $LocalUser `

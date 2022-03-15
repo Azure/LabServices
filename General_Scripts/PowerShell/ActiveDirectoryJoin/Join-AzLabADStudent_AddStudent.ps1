@@ -7,10 +7,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 .SYNOPSIS
 This script is part of the scripts chain for joining a student VM to an Active Directory domain. It retrieves the info of the student assigned to this Lab VM. Then it adds the student domain account to the local RDP group. 
 .LINK https://docs.microsoft.com/en-us/azure/lab-services/classroom-labs/how-to-connect-peer-virtual-network
-.PARAMETER LabAccountResourceGroupName
-Resource group name of Lab Account.
-.PARAMETER LabAccountName
-Name of Lab Account.
+.PARAMETER LabResourceGroupName
+Resource group name of Lab.
 .PARAMETER LabName
 Name of Lab.
 .PARAMETER DomainServiceAddress
@@ -34,8 +32,7 @@ Name of the task this script is run from (optional).
 .NOTES
 .EXAMPLE
 . ".\Join-AzLabADStudent_AddStudent.ps1" `
-    -LabAccountResourceGroupName 'labaccount-rg' `
-    -LabAccountName 'labaccount' `
+    -LabResourceGroupName 'labaccount-rg' `
     -LabName 'Mobile App Development' `
     -DomainServiceAddress '10.0.23.5','10.0.23.6' `
     -Domain 'contoso.com' `
@@ -51,12 +48,8 @@ Name of the task this script is run from (optional).
 param(
     [parameter(Mandatory = $true, HelpMessage = "Resource group name of Lab Account.", ValueFromPipeline = $true)]
     [ValidateNotNullOrEmpty()]
-    $LabAccountResourceGroupName,
+    $LabResourceGroupName,
 
-    [parameter(Mandatory = $true, HelpMessage = "Name of Lab Account.", ValueFromPipeline = $true)]
-    [ValidateNotNullOrEmpty()]
-    $LabAccountName,
-  
     [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true, HelpMessage = "Name of Lab.")]
     [ValidateNotNullOrEmpty()]
     $LabName,
@@ -109,24 +102,27 @@ try {
 
     . ".\Utils.ps1"
 
-    Write-LogFile "Importing AzLab Module"
-    Import-AzLabModule
+    Write-LogFile "Importing Az.LabServices Module"
+    Import-Module Az.LabServices -Force
+
+    if (Check-AzLabCurrentVmIsTemplate) {
+        Write-LogFile "Add student will not be run on the template vm."
+        exit
+    }
 
     Write-LogFile "Getting information on the currently running Student VM"
-    $labAccount = Get-AzLabServicesLabPLan -ResourceGroupName $LabAccountResourceGroupName -Name $LabAccountName
-    $lab = $labAccount | Get-AzLabServicesLab -Name $LabName
-    $studentVm = $lab | Get-AzLabCurrentStudentVmFromLab
-
-    if ($studentVm.properties.isClaimed) {
+    #$labPlan = Get-AzLabServicesLabPLan -ResourceGroupName $LabResourceGroupName -Name $LabName
+    $lab = Get-AzLabServicesLab -Name $LabName -ResourceGroupName $LabResourceGroupName
+    $studentEmail = $lab | Get-AzLabCurrentStudentVmFromLab
+    
+    if ($studentEmail) {
 
         # Get the student who claimed this VM
-        $student = $lab | Get-AzLabUserForCurrentVm -Vm $studentVm
-        Write-LogFile "VM '$env:COMPUTERNAME' has been claimed by student '$($student.properties.email)'"
-    
+        Write-LogFile "VM '$env:COMPUTERNAME' has been claimed by student '$studentEmail'"
         Write-LogFile "Trying to add student '$($student.properties.email)' to the Remote Desktop Users group"
         
         $computerDomain = (Get-WmiObject Win32_ComputerSystem).Domain
-        $username = $student.properties.email.Split("@")[0]
+        $username = $studentEmail.Split("@")[0]
         $domainUser = "$computerDomain\$username"
 
         $rdpGroupMembers = Get-LocalGroupMember "Remote Desktop Users"

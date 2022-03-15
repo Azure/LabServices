@@ -49,12 +49,8 @@ Name of the task this script is run from (optional).
 param(
     [parameter(Mandatory = $true, HelpMessage = "Resource group name of Lab Account.", ValueFromPipeline = $true)]
     [ValidateNotNullOrEmpty()]
-    $LabAccountResourceGroupName,
-
-    [parameter(Mandatory = $true, HelpMessage = "Name of Lab Account.", ValueFromPipeline = $true)]
-    [ValidateNotNullOrEmpty()]
-    $LabAccountName,
-  
+    $LabResourceGroupName,
+ 
     [parameter(Mandatory = $true, ValueFromPipelineByPropertyName = $true, HelpMessage = "Name of Lab.")]
     [ValidateNotNullOrEmpty()]
     $LabName,
@@ -107,6 +103,14 @@ try {
 
     . ".\Utils.ps1"
 
+    Write-LogFile "Importing Az.LabServices Module"
+    Import-Module Az.LabServices -Force
+    
+    if (Check-AzLabCurrentVmIsTemplate) {
+        Write-LogFile "Join will not be run on the template vm."
+        exit
+    }
+
     # Check if VM has already been domain joined
     $computerDomain = (Get-WmiObject Win32_ComputerSystem).Domain
     if ($computerDomain -ieq $Domain) {
@@ -135,8 +139,7 @@ try {
     # Register Add Student script to run at next startup
     Write-LogFile "Registering the '$JoinAzLabADStudentAddStudentScriptName' script to run at next startup"
     Register-AzLabADStudentTask `
-        -LabAccountResourceGroupName $LabAccountResourceGroupName `
-        -LabAccountName $LabAccountName `
+        -LabResourceGroupName $LabResourceGroupName `
         -LabName $LabName `
         -DomainServiceAddress $DomainServiceAddress `
         -Domain $Domain `
