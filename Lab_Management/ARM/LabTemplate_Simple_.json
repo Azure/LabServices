@@ -1,0 +1,75 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "LabName": {
+            "type": "String"
+        },
+        "LabPlanName": {
+            "type": "String"
+        },
+        "Location": {
+            "type": "String"
+        },
+        "AdminUser": {
+            "type": "string"
+        },
+        "AdminPassword": {
+            "type": "string"
+        }
+    },
+    "variables": {},
+    "resources": [        
+        {
+            "type": "Microsoft.LabServices/labs",
+            "apiVersion": "2021-11-15-preview",
+            "name": "[parameters('LabName')]",
+            "location": "[parameters('Location')]",
+            "properties": {
+                "networkProfile": {},
+                "autoShutdownProfile": {
+                    "shutdownOnDisconnect": "Disabled",
+                    "shutdownWhenNotConnected": "Disabled",
+                    "shutdownOnIdle": "None",
+                    "disconnectDelay": "PT15M",
+                    "noConnectDelay": "PT15M",
+                    "idleDelay": "PT15M"
+                },
+                "connectionProfile": {
+                    "webSshAccess": "None",
+                    "webRdpAccess": "None",
+                    "clientSshAccess": "None",
+                    "clientRdpAccess": "Public"
+                },
+                "virtualMachineProfile": {
+                    "createOption": "Image",
+                    "imageReference": {
+                        "offer": "windows-11",
+                        "publisher": "microsoftwindowsdesktop",
+                        "sku": "win11-21h2-pro",
+                        "version": "latest"
+                    },
+                    "sku": {
+                        "name": "Classic_Fsv2_2_4GB_128_S_SSD",
+                        "capacity": 6
+                    },
+                    "additionalCapabilities": {
+                        "installGpuDrivers": "Disabled"
+                    },
+                    "usageQuota": "PT10H",
+                    "useSharedPassword": "Enabled",
+                    "adminUser": {
+                        "username": "[parameters('AdminUser')]",
+                        "password" : "[parameters('AdminPassword')]"
+                    }
+                },
+                "securityProfile": {
+                    "openAccess": "Disabled"
+                },
+                "rosterProfile": {},
+                "labPlanId": "[resourceId('Microsoft.LabServices/labPlans', parameters('LabPlanName'))]",
+                "title": "[parameters('LabName')]"
+            }
+        }
+    ]
+}
