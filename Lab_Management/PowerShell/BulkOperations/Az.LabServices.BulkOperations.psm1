@@ -55,6 +55,18 @@ function Import-LabsCsv {
         }
     }
 
+    # Check tags match per lab plan
+    foreach ($planName in $planNames){
+        $matchplan = $plan | Where-Object {$_.ResourceGroupName -eq $planName.ResourceGroupName -and $_.LabPlanName -eq $planName.LabPlanName}
+        $firstPlan = $matchplan[0]
+  
+        $mismatchSIGs = $matchplan | Where-Object {$_.Tags -ne $firstPlan.Tags}
+        $mismatchSIGs | Foreach-Object {
+            $msg1 = "Tags - Expected: $($firstPlan.Tags) Actual: $($_.Tags)"
+            Write-Error "Lab plan $planName Tags values are not consistent. $msg1."
+        }
+    }
+
     $labs | ForEach-Object {
 
         # First thing, we need to save the original properties in case they're needed later (for export)
@@ -406,6 +418,7 @@ function New-AzLabsBulk {
                 $StartTime = Get-Date
                 Write-Host "Creating Lab : $($obj.LabName)"
                 
+                $currentLab = $null
                 $plan = $null
                 try {
                     $plan = Get-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName
@@ -423,13 +436,16 @@ function New-AzLabsBulk {
 
                 if ($lab) {
                     Write-Host "Lab already exists."
-                    $currentLab = $lab
+                    $currentLab = $plan | Get-AzLabServicesLab -Name $obj.LabName
                 }
                 else {
 
                     # Try to get shared image and then gallery image
-                    $img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState.ToString() -eq "Enabled" -and $_.DisplayName -eq $obj.ImageName }
-                    if (-not $img -or @($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image." }
+                    Write-Host "Image Name: $($obj.ImageName)"
+                    #$img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState.ToString() -eq "Enabled"} | Where-Object {$_.DisplayName -eq $obj.ImageName}
+                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) -DisplayName $($obj.ImageName)
+                    if (-not $img) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }
+                    if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image. $(@($img).Count.ToString())" }
 
                     # Set the TemplateVmState, defaulting to enabled
                     if (Get-Member -InputObject $obj -Name TemplateVmState) {
@@ -519,8 +535,18 @@ function New-AzLabsBulk {
                     }
                     
                     $FullParameterList = $NewLabParameters + $idleGracePeriodParameters + $enableDisconnectOnIdleParameters + $idleNoConnectGracePeriodParameters + $ConnectionProfile + $ImageInformation
-                    $currentLab = New-AzLabServicesLab @FullParameterList
                     
+                    Write-Host "Starting lab creation $($obj.LabName)"
+
+                    try {
+                        $currentLab = New-AzLabServicesLab @FullParameterList
+                    }
+                    catch {
+                        Write-Host "In Catch: $_"
+                        Start-Sleep -Seconds 30
+                        $currentLab = New-AzLabServicesLab @FullParameterList
+                    }
+                    Write-Host "Lab $($obj.LabName) provisioning state $($currentLab.ProvisioningState)"
                     Write-Host "Completed lab creation step in $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes"
 
                     # In the case of AAD Group, we have to force sync users to update the MaxUsers property
@@ -850,19 +876,21 @@ function Remove-AzLabsBulk {
 
                 try {
                     $lab = $plan | Get-AzLabServicesLab -Name $obj.LabName
+                    $output = Remove-AzLabServicesLab -Lab $lab
+                    Write-Host "Removal output: $output"
+                    Write-Host "Completed removal of $($obj.LabName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes"
+    
                 }
                 catch {
-                    Write-Error "Unable to find lab $($obj.LabName)."
+                    Write-Error "Unable to find or remove lab $($obj.LabName)."
                 }
                 
-                Remove-AzLabServicesLab -Lab $lab
-                Write-Host "Completed removal of $($obj.LabName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes"
             }
 
             Write-Host "Starting removal of all labs in parallel. Can take a while."
             $labs = $ConfigObject | Select-Object -Property ResourceGroupName, LabPlanName, LabName -Unique
             
-            Write-Verbose "Operating on the following Lab Accounts:"
+            Write-Verbose "Operating on the following Lab Plans:"
             Write-Verbose ($labs | Format-Table | Out-String)
 
             $jobs = @()
@@ -875,7 +903,7 @@ function Remove-AzLabsBulk {
             return JobManager -currentjobs $jobs -ResultColumnName "RemoveLabResult"
         }
 
-        Remove-AzLabs-Jobs   -ConfigObject $aggregateLabs
+        Remove-AzLabs-Jobs -ConfigObject $aggregateLabs
     }
 }
 
@@ -950,6 +978,7 @@ function Publish-AzLabsBulk {
                     Write-Error "Unable to find lab $($obj.LabName)."
                 }
 
+                Write-Host "Publish state: $($lab.State)"
                 if ($lab.State -ne "Failed"){
                     Publish-AzLabServicesLab -Lab $lab | Out-null
                     Write-Host "Completed publishing of $($obj.LabName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
@@ -1254,6 +1283,82 @@ function Reset-AzLabUserQuotaBulk {
         JobManager -currentJobs $jobs -ResultColumnName "ResetQuotaResult"
     }
 }
+
+function Remove-AzLabUsersBulk {
+    [CmdletBinding()]
+    param(
+        [parameter(Mandatory = $true, HelpMessage = "Array containing one line for each lab to be updated.", ValueFromPipeline = $true)]
+        [ValidateNotNullOrEmpty()]
+        [psobject[]]
+        $labs,
+
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
+        [int]
+        $ThrottleLimit = 5
+    )
+
+    begin {
+        # This patterns aggregates all the objects in the pipeline before performing an operation
+        # i.e. executes lab creation in parallel instead of sequentially
+        # This trick is to make it work both when the argument is passed as pipeline and as normal arg.
+        # I came up with this. Maybe there is a better way.
+        $aggregateLabs = @()
+    }
+    process {
+        # If passed through pipeline, $labs is a single object, otherwise it is the whole array
+        # It works because PS uses '+' to add objects or arrays to an array
+        $aggregateLabs += $labs
+
+    }
+    end {
+
+        $block = {
+            param($obj, $path)
+
+            Set-StrictMode -Version Latest
+            $ErrorActionPreference = 'Stop'
+
+            Write-Verbose "object inside the Remove-AzLabUsersBulk-Job block $obj"
+
+            Import-Module -Name Az.LabServices
+
+            Write-Verbose "ConfigObject: $($obj | ConvertTo-Json -Depth 40)"
+
+            $la = Get-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabPlanName)
+            if (-not $la -or @($la).Count -ne 1) { Write-Error "Unable to find lab plan $($obj.LabPlanName)."}
+
+            $lab = Get-AzLabServicesLab -LabPlan $la -Name $($obj.LabName)
+            if (-not $lab -or @($lab).Count -ne 1) { Write-Error "Unable to find lab $($obj.LabName)."}
+
+            Write-Host "Checking lab '$($lab.Name)' in lab plan '$($la.Name)' for students..."
+            
+            $students = Get-AzLabServicesUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName
+
+            foreach ($email in $obj.emails) {                
+                try {
+                    Write-Host "Check user $email"
+                    $student = $students | Where-Object {$_.Email -eq $email}
+                    Write-Host "Found user $email"
+                    if ($student) {
+                        Write-Host "Removing user $email"
+                        Remove-AzLabServicesUser -Lab $lab -Name $student.Name
+                    }
+                }
+                catch {
+                    Write-Host "Unable to find email $email in lab $($lab.Name): $_"
+                }                
+            }
+        }
+
+        $jobs = $aggregateLabs | ForEach-Object {
+                Write-Verbose "From config: $_"
+                Start-ThreadJob -ScriptBlock $block -ArgumentList $_, $PSScriptRoot -Name $_.LabName -ThrottleLimit $ThrottleLimit
+            }
+
+        JobManager -currentJobs $jobs -ResultColumnName "RemoveUserResult"
+    }
+}
+
 
 function Confirm-AzLabsBulk {
     param(
@@ -1667,6 +1772,7 @@ Export-ModuleMember -Function   Import-LabsCsv,
                                 Sync-AzLabADUsersBulk,
                                 Get-AzLabsRegistrationLinkBulk,
                                 Reset-AzLabUserQuotaBulk,
+                                Remove-AzLabUsersBulk,
                                 Confirm-AzLabsBulk,
                                 Set-AzRoleToLabPlansBulk,
                                 Set-LabProperty,

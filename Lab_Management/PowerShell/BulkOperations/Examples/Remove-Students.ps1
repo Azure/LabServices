@@ -2,11 +2,11 @@
 param(
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [string]
-    $CsvConfigFile = "BulkBellowsCollegeLabs_Test.csv",
+    $CsvConfigFile,
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [int]
-    $ThrottleLimit = 100
+    $ThrottleLimit = 10
 )
 
 Set-StrictMode -Version Latest
