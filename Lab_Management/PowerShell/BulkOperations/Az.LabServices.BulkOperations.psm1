@@ -442,8 +442,7 @@ function New-AzLabsBulk {
 
                     # Try to get shared image and then gallery image
                     Write-Host "Image Name: $($obj.ImageName)"
-                    #$img = $plan | Get-AzLabServicesPlanImage | Where-Object { $_.EnabledState.ToString() -eq "Enabled"} | Where-Object {$_.DisplayName -eq $obj.ImageName}
-                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) -DisplayName $($obj.ImageName)
+                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {$_.DisplayName -eq $obj.ImageName} | Where-Object { $_.EnabledState.ToString() -eq "Enabled"}
                     if (-not $img) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }
                     if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image. $(@($img).Count.ToString())" }
 
