@@ -1,0 +1,127 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "LabName": {
+            "type": "String"
+        },
+        "LabPlanName": {
+            "type": "String"
+        },
+        "Location": {
+            "type": "String"
+        },
+        "SSHAccess":{
+            "type":"String",
+            "allowedValues": ["Public","Private","None"],
+            "defaultValue": "None"
+        },
+        "RDPAccess": {
+            "type": "string",
+            "allowedValues": ["Public","Private","None"],
+            "defaultValue": "Public"
+        },
+        "AdminUser": {
+            "type": "string"
+        },
+        "AdminPassword": {
+            "type": "securestring"
+        },
+        "SkuSize": {
+            "type": "string"
+        },
+        "Capacity": {
+            "type": "int"
+        },
+        "GpuDrivers": {
+            "type": "string"
+        },
+        "UsageQuota": {
+            "type": "string"
+        },
+        "SecurityOpenAccess": {
+            "type": "string",
+            "allowedValues": ["Enabled", "Disabled"]
+        },
+        "SharedPassword": {
+            "type": "string",
+            "allowedValues": ["Enabled","Disabled"]
+        },
+        "DisconnectDelay": {
+            "type": "string"
+        },
+        "NoConnectDelay": {
+            "type": "string"
+        },
+        "IdleDelay": {
+            "type": "string"
+        },
+        "ImageOffer": {
+            "type": "string"
+        },
+        "ImagePublisher": {
+            "type": "string"
+        },
+        "ImageSku": {
+            "type": "string"
+        },
+        "ImageVersion": {
+            "type": "string"
+        }
+    },
+    "variables": {
+    },
+    "resources": [        
+        {
+            "type": "Microsoft.LabServices/labs",
+            "apiVersion": "2021-11-15-preview",
+            "name": "[parameters('LabName')]",
+            "location": "[parameters('Location')]",
+            "properties": {
+                "networkProfile": {},
+                "autoShutdownProfile": {
+                    "shutdownOnDisconnect": "[if(equals(parameters('DisconnectDelay'), 0), 'Disabled', 'Enabled')]",
+                    "shutdownWhenNotConnected": "[if(equals(parameters('NoConnectDelay'), 0), 'Disabled', 'Enabled')]",
+                    "shutdownOnIdle": "[if(equals(parameters('IdleDelay'), 0), 'None', 'UserAbsence')]",
+                    "disconnectDelay": "[concat('PT', parameters('DisconnectDelay'), 'M')]",
+                    "noConnectDelay": "[concat('PT', parameters('NoConnectDelay'), 'M')]",
+                    "idleDelay": "[concat('PT', parameters('IdleDelay'), 'M')]"
+                },
+                "connectionProfile": {
+                    "webSshAccess": "None",
+                    "webRdpAccess": "None",
+                    "clientSshAccess": "[parameters('SSHAccess')]",
+                    "clientRdpAccess": "[parameters('RDPAccess')]"
+                },
+                "virtualMachineProfile": {
+                    "createOption": "Image",
+                    "imageReference": {
+                        "offer": "[parameters('ImageOffer')]",
+                        "publisher": "[parameters('ImagePublisher')]",
+                        "sku": "[parameters('ImageSku')]",
+                        "version": "[parameters('ImageVersion')]"
+                    },
+                    "sku": {
+                        "name": "[parameters('SkuSize')]",
+                        "capacity": "[parameters('Capacity')]"
+                    },
+                    "additionalCapabilities": {
+                        "installGpuDrivers": "[parameters('GpuDrivers')]"
+                    },
+                    "usageQuota": "[concat('PT', parameters('UsageQuota'), 'H')]",
+                    "useSharedPassword": "[parameters('SharedPassword')]",
+                    "adminUser": {
+                        "username": "[parameters('AdminUser')]",
+                        "password" : "[parameters('AdminPassword')]"
+                    }
+                },
+                "securityProfile": {
+                    "openAccess": "[parameters('SecurityOpenAccess')]"
+                },
+                "rosterProfile": {},
+                "labPlanId": "[resourceId('Microsoft.LabServices/labPlans', parameters('LabPlanName'))]",
+                "title": "[parameters('LabName')]"
+            }
+        }
+    ]
+}
