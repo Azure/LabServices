@@ -20,7 +20,6 @@ Write-Host "Executing Bulk Publish Script, starting at $scriptstartTime" -Foregr
 
 $labs = Import-LabsCsv $CsvConfigFile
 
-#$xxx = $labs | Select-Object -Property @{N="Name";E={$_.LabName}},ResourceGroupName 
 $jobs = @()
 $jobs += $labs | ForEach-Object {Remove-AzLabServicesLab -Name $_.LabName -ResourceGroupName $_.ResourceGroupName -AsJob} | Get-Job
 
