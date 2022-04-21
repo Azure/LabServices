@@ -22,12 +22,12 @@ $scriptstartTime = Get-Date
 Write-Host "Executing Lab Account Deletion Script, starting at $scriptstartTime" -ForegroundColor Green
 
 $configObjects = $CsvConfigFile | Import-Csv
-$labAccounts = $configObjects | Select-Object -Property ResourceGroupName, LabPlanName -Unique
+$labPlans = $configObjects | Select-Object -Property ResourceGroupName, LabPlanName -Unique
 
-$labaccounts | ForEach-Object {
-    $labAccount = Get-AzLabServicesLabPlan -ResourceGroupName $_.ResourceGroupName -LabPlanName $_.LabPlanName -ErrorAction SilentlyContinue
-    if ($labAccount) {
-        $labAccount | Remove-AzLabServicesLabPlan
+$labPlans | ForEach-Object {
+    $labPlan = Get-AzLabServicesLabPlan -ResourceGroupName $_.ResourceGroupName -LabPlanName $_.LabPlanName -ErrorAction SilentlyContinue
+    if ($labPlan) {
+        $labPlan | Remove-AzLabServicesLabPlan
         Write-Host "Initiated removing Lab plan '$($_.LabPlanName)' in resource group '$($_.ResourceGroupName)'"
     }
     else {
