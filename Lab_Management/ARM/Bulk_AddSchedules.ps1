@@ -15,8 +15,8 @@ if (-not (Test-Path -Path $CsvConfigFile)) {
 
 Import-Module ".\Utilities.psm1"
 
-$scriptstartTime = Get-Date
-Write-Host "Executing Bulk Add Schedules Script, starting at $scriptstartTime" -ForegroundColor Green
+$scriptschedstartTime = Get-Date
+Write-Host "Executing Bulk Add Schedules Script, starting at $scriptschedstartTime" -ForegroundColor Green
 
 $labs = Import-LabsCsv $CsvConfigFile
 
@@ -75,4 +75,4 @@ ForEach ($lab in $labs) {
     }
 }
 
-Write-Host "Completed running Bulk Add Schedules script, total duration $([math]::Round(((Get-Date) - $scriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
+Write-Host "Completed running Bulk Add Schedules script, total duration $([math]::Round(((Get-Date) - $scriptschedstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green

@@ -10,14 +10,11 @@ param(
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [ValidateNotNullOrEmpty()]
-    [string] $ARMFile = "LabTemplate_Sample.json",
+    [string] $ARMFile = "C:\Repos\LabServices\Lab_Management\ARM\LabTemplate_Sample.json",
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [ValidateNotNullOrEmpty()]
-    [switch] $force,
-
-    [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
-    [int] $ThrottleLimit = 10
+    [switch] $force
 )
 
 Set-StrictMode -Version Latest
@@ -57,9 +54,9 @@ ForEach ($lab in $labs) {
         Capacity = [int]$($lab.MaxUsers); `
         UsageQuota = $($lab.UsageQuota); `
         SharedPassword = $($lab.SharedPassword); `
-        DisconnectDelay = $($lab.idleOsGracePeriod); `
-        NoConnectDelay = $($lab.idleNoConnectGracePeriod); `
-        IdleDelay = $($lab.idleGracePeriod); `
+        DisconnectDelay = $(if ($lab.idleOsGracePeriod) {$lab.idleOsGracePeriod} else {"0"}); `
+        NoConnectDelay = $( if ($lab.idleNoConnectGracePeriod) {$lab.idleNoConnectGracePeriod} else {"0"}); `
+        IdleDelay = $(if ($lab.idleGracePeriod) {$lab.idleGracePeriod} else {"0"}); `
         AdminUser = $($lab.UserName); `
         AdminPassword = $($lab.Password); }
 
@@ -104,7 +101,6 @@ ForEach ($lab in $labs) {
         $hashParam.Add("ImageSku", $image.Sku)
         $hashParam.Add("ImageVersion", $image.Version)
     }
-        
     $jobs +=New-AzResourceGroupDeployment -Name $lab.LabName -AsJob -ResourceGroupName $($lab.ResourceGroupName) -TemplateFile $ARMFile -TemplateParameterObject $hashParam | Get-Job
 }
 
@@ -112,19 +108,20 @@ $jobs | Wait-Job
 Write-Host "Lab Creation finished, total duration $([math]::Round(((Get-Date) - $scriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
 
 foreach ($job in $jobs) {
-
-
-    if (![bool]$job.PSObject.Properties.Item("Output")) {
-        Write-Host "Not Output property."
-    } else {
+   
+    if ((![bool]$job.PSObject.Properties.Item("Output")) -or (-not [string]::IsNullOrEmpty($job.Error))) { 
+        #Parse the Name to get the lab name
+        $labName = $job.Name.Split("'")[3]
+        $labjob = $labs | Where-Object { ($_.LabName -eq $labName)}
+        if ($labjob) {
+            Add-Member -InputObject $labjob -MemberType NoteProperty -Name "CreateLabResult" -Value "Failed: $($job.Error)" -Force
+        }
+    }
+    else {
         $labjob = $labs | Where-Object { ($_.ResourceGroupName -eq $job.Output.ResourceGroupName) -and ($_.LabName -eq $job.Output.DeploymentName)}
 
         if ($labjob) {
-            if ($job.Error) {
-                Add-Member -InputObject $labjob -MemberType NoteProperty -Name "CreateLabResult" -Value "Failed: $($job.Error)" -Force
-            } else {
-                Add-Member -InputObject $labjob -MemberType NoteProperty -Name "CreateLabResult" -Value "Success" -Force
-            }
+            Add-Member -InputObject $labjob -MemberType NoteProperty -Name "CreateLabResult" -Value "Success" -Force
         }
         Remove-Job -Job $job
     }
