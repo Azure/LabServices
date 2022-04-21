@@ -17,7 +17,6 @@ if (-not (Test-Path -Path $CsvConfigFile)) {
     Write-Error "Input CSV File must exist, please choose a valid file location..."
 }
 
-#Import-Module ../../Az.LabServices.psm1 -Force
 Import-Module ../Az.LabServices.BulkOperations.psm1 -Force
 
 $scriptstartTime = Get-Date
