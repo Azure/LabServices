@@ -1,4 +1,5 @@
 # Lab Services ARM support
+> THIS SECTION IS UNDER ACTIVE DEVELOPMENT, SCRIPTS AND TEMPLATES MAY NOT BE FULLY FUNCTIONAL
 
 ## Simple ARM example.
 This section contains a simple lab creation using an ARM template with a PowerShell script to execute the Resource Group deployment.
