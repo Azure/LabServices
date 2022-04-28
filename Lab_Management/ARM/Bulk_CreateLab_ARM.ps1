@@ -10,8 +10,7 @@ param(
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [ValidateNotNullOrEmpty()]
-    #[string] $ARMFile = "C:\Repos\LabServices\Lab_Management\ARM\ALS_Lab.Bicep",
-    [string] $ARMFile = "C:\Repos\LabServices\Lab_Management\ARM\LabTemplate_Sample.json",
+    [string] $ARMFile,
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [ValidateNotNullOrEmpty()]

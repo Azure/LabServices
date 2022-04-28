@@ -247,7 +247,7 @@ function Watch-Jobs {
             } else {
                 Add-Member -InputObject $labForJob -MemberType NoteProperty -Name $resultColumnName -Value "Failed: $($currentJob.Value.Warning + ":" + $currentJob.Value.Error)" -Force
             }
-            #Remove-Job -Job $currentJob.Value | Out-Null
+            Remove-Job -Job $currentJob.Value | Out-Null
         } else {
             Write-Host "Unable to match job with lab: $($currentJob.Key)"
         }
