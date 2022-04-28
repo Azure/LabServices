@@ -50,10 +50,24 @@ ForEach ($lab in $labs) {
         Write-Host "Getting new images $($lab.LabPlanName)"
         New-Variable -Name $lab.LabPlanName -Value $(Get-AzLabServicesPlanImage -ResourceGroupName $lab.ResourceGroupName -LabPlanName $lab.LabPlanName)
     }
+    
+    #Handle tags
+    $tagParam = @{}
+    if ($lab.Tags) {
+        $tags = $lab.Tags.Split(";")
+        foreach($tag in $tags) {
+            $tagParts = $tag.Split("=")
+            $tagParam.Add($tagParts[0],$tagParts[1])
+        }
+    }
+
 
     $hashParam = @{LabName = $($lab.LabName); `
+        Title = $($lab.Title); `
+        Tags = $($tagParam); `
         LabPlanName = $($lab.LabPlanName); `
         Location = $($lab.Location); `
+        AadGroupId = $($lab.AadGroupId); `
         SkuSize = $($lab.Size); `
         Capacity = [int]$($lab.MaxUsers); `
         UsageQuota = $($lab.UsageQuota); `

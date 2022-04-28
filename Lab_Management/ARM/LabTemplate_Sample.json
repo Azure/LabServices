@@ -2,6 +2,9 @@
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
+        "Title": {
+            "type": "string"
+        },
         "LabName": {
             "type": "String"
         },
@@ -68,11 +71,17 @@
         "ImageVersion": {
             "type": "string"
         },
+        "AadGroupId":{
+            "type": "string"
+        },
         "LabUsers": {
             "type": "array"
         },
         "LabSchedules": {
             "type": "array"
+        },
+        "Tags": {
+            "type": "object"
         }
     },
     "variables": {
@@ -86,6 +95,7 @@
             "apiVersion": "2021-11-15-preview",
             "name": "[parameters('LabName')]",
             "location": "[parameters('Location')]",
+            "tags": "[parameters('Tags')]",
             "properties": {
                 "networkProfile": {},
                 "autoShutdownProfile": {
@@ -127,9 +137,11 @@
                 "securityProfile": {
                     "openAccess": "[parameters('SecurityOpenAccess')]"
                 },
-                "rosterProfile": {},
+                "rosterProfile": {
+                    "activeDirectoryGroupId": "[if(equals(parameters('AadGroupId'),''), json('null'), parameters('AadGroupId'))]"
+                },
                 "labPlanId": "[resourceId('Microsoft.LabServices/labPlans', parameters('LabPlanName'))]",
-                "title": "[parameters('LabName')]"
+                "title": "[parameters('Title')]"
             }
         },
         {
