@@ -67,6 +67,12 @@
         },
         "ImageVersion": {
             "type": "string"
+        },
+        "LabUsers": {
+            "type": "array"
+        },
+        "LabSchedules": {
+            "type": "array"
         }
     },
     "variables": {
@@ -124,6 +130,37 @@
                 "rosterProfile": {},
                 "labPlanId": "[resourceId('Microsoft.LabServices/labPlans', parameters('LabPlanName'))]",
                 "title": "[parameters('LabName')]"
+            }
+        },
+        {
+            "condition": "[not(empty(parameters('LabUsers')))]",
+            "type": "Microsoft.LabServices/labs/users",
+            "apiVersion": "2021-11-15-preview",
+            "name": "[concat(parameters('LabName'), '/', uniqueString(parameters('LabUsers')[copyIndex()]))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.LabServices/labs', parameters('LabName'))]"
+            ],
+            "properties": {
+                "email": "[parameters('LabUsers')[copyIndex()]]",
+                "additionalUsageQuota": "PT0S"
+            },
+            "copy":{
+                "name": "usercopy",
+                "count": "[length(parameters('LabUsers'))]"
+            }
+        },
+        {
+            "condition": "[not(empty(parameters('LabSchedules')))]",
+            "type": "Microsoft.LabServices/labs/schedules",
+            "apiVersion": "2021-11-15-preview",
+            "name": "[concat(parameters('LabName'), '/', uniqueString(parameters('LabSchedules')[copyIndex()].startat))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.LabServices/labs', parameters('LabName'))]"
+            ],
+            "properties": "[parameters('LabSchedules')[copyIndex()]]",
+            "copy":{
+                "name": "schedulecopy",
+                "count": "[length(parameters('LabSchedules'))]"
             }
         }
     ]

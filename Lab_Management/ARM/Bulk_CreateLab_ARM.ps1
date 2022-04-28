@@ -10,7 +10,11 @@ param(
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [ValidateNotNullOrEmpty()]
-    [string] $ARMFile = "C:\Repos\LabServices\Lab_Management\ARM\LabTemplate_Sample.json",
+    [string] $ARMFile,
+
+    [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
+    [ValidateNotNullOrEmpty()]
+    [switch] $publish,
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [ValidateNotNullOrEmpty()]
@@ -30,14 +34,14 @@ if ((Test-Path -Path $CsvOutputFile) -and (-not $force.IsPresent)) {
     Write-Error "Output File cannot already exist, please choose a location to create a new output file..."
 }
 
-Import-Module ".\Utilities.psm1"
+Import-Module ".\Utilities.psm1" -Force
 
 $scriptstartTime = Get-Date
 Write-Host "Executing Lab Creation Script, starting at $scriptstartTime" -ForegroundColor Green
 
 $labs = $CsvConfigFile | Import-LabsCsv 
 
-$jobs = @()
+$jobs = @{}
 
 ForEach ($lab in $labs) {
     
@@ -101,43 +105,97 @@ ForEach ($lab in $labs) {
         $hashParam.Add("ImageSku", $image.Sku)
         $hashParam.Add("ImageVersion", $image.Version)
     }
-    $jobs +=New-AzResourceGroupDeployment -Name $lab.LabName -AsJob -ResourceGroupName $($lab.ResourceGroupName) -TemplateFile $ARMFile -TemplateParameterObject $hashParam | Get-Job
+
+    #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    # Create Users array
+        $hashParam.Add("LabUsers", $lab.Emails)
+    #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+    # Create Schedules Array
+        $scheduleArray = @()
+        if ($lab.Schedules) {
+            foreach($schedule in $lab.Schedules) {
+                $sdate = [datetime]::Parse($schedule.FromDate)
+                $stime = [datetime]::Parse($schedule.StartTime.Replace('"',''))
+                $startd = [datetime]::New($sdate.Year, $sdate.Month, $sdate.Day, $stime.Hour, $stime.Minute, 0)
+                $fullStart = $startd.ToString('u')
+
+                $etime = [datetime]::Parse($schedule.EndTime.Replace('"',''))
+                $endd = [datetime]::New($sdate.Year, $sdate.Month, $sdate.Day, $etime.Hour, $etime.Minute, 0)
+                $fullEnd = $endd.ToString('u')
+
+                $edate = [datetime]::Parse($schedule.ToDate.Replace('"',''))
+                $duntil = [datetime]::New($edate.Year, $edate.Month, $edate.Day, 23, 59, 59)
+                $fullUntil = $duntil.ToString('u')
+
+                $weekdays = @() #$null
+                foreach ($day in ($schedule.WeekDays -Split ";")) {
+                    $weekdays += $day.Trim("""").ToString()
+                }
+
+
+                    if ($schedule.Frequency -eq "Once") {
+                        $singleEvent = @{
+                            startAt = $fullStart
+                            stopAt = $fullEnd
+                            timeZoneId = $($schedule.TimeZoneId)
+                            notes = $($schedule.Notes)
+                        }
+                        $scheduleArray += $singleEvent
+                    } else {
+                        $repeatEvent = @{
+                            startAt = $fullStart
+                            stopAt = $fullEnd
+                            timeZoneId = $($schedule.TimeZoneId)
+                            notes = $($schedule.Notes)
+                            recurrencePattern = @{
+                                frequency = $($schedule.Frequency)
+                                weekDays = $weekdays
+                                interval = 1
+                                expirationDate = $(Get-Date $fullUntil)
+                            }
+                        }
+                        $scheduleArray += $repeatEvent
+                    }
+            }
+            $hashParam.Add("LabSchedules", $scheduleArray)
+        } else {
+            $hashParam.Add("LabSchedules", @())
+        }
+    #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+    Write-Host "Start creating lab $($lab.LabName)"
+    $key = $lab.ResourceGroupName + ":" + $lab.LabName
+    $value = New-AzResourceGroupDeployment -Name $lab.LabName -AsJob -ResourceGroupName $($lab.ResourceGroupName) -TemplateFile $ARMFile -TemplateParameterObject $hashParam | Get-Job
+    $jobs.Add($key,$value)
+
 }
 
-$jobs | Wait-Job
-Write-Host "Lab Creation finished, total duration $([math]::Round(((Get-Date) - $scriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
+Watch-Jobs -Labs $labs -Jobs $jobs -ResultColumnName "CreateLabResult" | Out-Null
 
-foreach ($job in $jobs) {
-   
-    if ((![bool]$job.PSObject.Properties.Item("Output")) -or (-not [string]::IsNullOrEmpty($job.Error))) { 
-        #Parse the Name to get the lab name
-        $labName = $job.Name.Split("'")[3]
-        $labjob = $labs | Where-Object { ($_.LabName -eq $labName)}
-        if ($labjob) {
-            Add-Member -InputObject $labjob -MemberType NoteProperty -Name "CreateLabResult" -Value "Failed: $($job.Error)" -Force
-        }
-    }
-    else {
-        $labjob = $labs | Where-Object { ($_.ResourceGroupName -eq $job.Output.ResourceGroupName) -and ($_.LabName -eq $job.Output.DeploymentName)}
-
-        if ($labjob) {
-            Add-Member -InputObject $labjob -MemberType NoteProperty -Name "CreateLabResult" -Value "Success" -Force
-        }
-        Remove-Job -Job $job
-    }
-}
-
-Write-Host "Completed running Bulk Lab Creation script, total duration $([math]::Round(((Get-Date) - $scriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
+Write-Host "All Labs Creation finished, total duration $([math]::Round(((Get-Date) - $scriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
 
 $labs | Export-LabsCsv -CsvConfigFile $CsvOutputFile -Force:$true
 
-Write-Host "Adding Users"
 
-. .\Bulk_AddUsers.ps1 -CsvConfigFile $CsvConfigFile
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-Write-Host "Adding Schedules"
+if ($true) {
+#if ($publish.IsPresent) {
+    $jobs = @{}
+    $pubscriptstartTime = Get-Date
+    Write-Host "Executing Lab Creation Publish Script, starting at $pubscriptstartTime" -ForegroundColor Green
 
-. .\Bulk_AddSchedules.ps1 -CsvConfigFile $CsvConfigFile
+    foreach ($lab in $labs) {    
+        $key = $lab.ResourceGroupName + ":" + $lab.LabName
+        $value = Publish-AzLabServicesLab -Name $lab.LabName -ResourceGroupName $lab.ResourceGroupName -AsJob | Get-Job
+        $jobs.Add($key,$value)
+    }
+
+    Watch-Jobs -Labs $labs -Jobs $jobs -ResultColumnName "PublishLabResult" | Out-Null
+    $labs | Export-LabsCsv -CsvConfigFile $CsvOutputFile -Force:$true
+    Write-Host "Lab Publish finished, total duration $([math]::Round(((Get-Date) - $pubscriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
+
+}
 
 Write-Host "Completed running Bulk Lab ARM Creation script, total duration $([math]::Round(((Get-Date) - $scriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
 
