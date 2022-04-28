@@ -128,10 +128,12 @@ ForEach ($lab in $labs) {
                 $duntil = [datetime]::New($edate.Year, $edate.Month, $edate.Day, 23, 59, 59)
                 $fullUntil = $duntil.ToString('u')
 
-                [Microsoft.Azure.PowerShell.Cmdlets.LabServices.Support.WeekDay[]]$weekdays = @() #$null
+                $weekdays = @() #$null
                 foreach ($day in ($schedule.WeekDays -Split ";")) {
-                    $weekdays += [Microsoft.Azure.PowerShell.Cmdlets.LabServices.Support.WeekDay]$day.Trim("""").ToString()
+                    $weekdays += $day.Trim("""").ToString()
                 }
+
+
                     if ($schedule.Frequency -eq "Once") {
                         $singleEvent = @{
                             startAt = $fullStart
