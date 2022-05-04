@@ -24,31 +24,14 @@
         }
     },
     "variables": {
-        "location": "southcentralus",
-        "labPlanName": "[concat('EHDemo_',uniqueString(resourceGroup().id, deployment().name))]",
-        "faux_CommunityGalleryId": "/subscriptions/da8f3095-ac12-4ef2-9b35-fcd24842e207/resourceGroups/DemoClassTypes/providers/Microsoft.Compute/galleries/Faux_CommunityGallery"
+        "location": "southcentralus"
     },
     "resources": [   
-         {
-            "type": "Microsoft.LabServices/labPlans",
-            "apiVersion": "2021-11-15-preview",
-            "name": "[variables('labPlanName')]",
-            "location": "[variables('Location')]",
-            "properties": {
-                "allowedRegions": [
-                    "[variables('Location')]"
-                ],
-                "sharedGalleryId": "[variables('faux_CommunityGalleryId')]"
-            }
-        },     
         {
             "type": "Microsoft.LabServices/labs",
             "apiVersion": "2021-11-15-preview",
             "name": "[parameters('LabName')]",
             "location": "[variables('Location')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.LabServices/labPlans/', variables('labPlanName'))]"
-            ],
             "properties": {
                 "networkProfile": {},
                 "autoShutdownProfile": {
@@ -87,8 +70,6 @@
                 "securityProfile": {
                     "openAccess": "Disabled"
                 },
-                "rosterProfile": {                },
-                "labPlanId": "[resourceId('Microsoft.LabServices/labPlans', variables('LabPlanName'))]",
                 "title": "[parameters('LabName')]"
             }
         }        
