@@ -1,0 +1,97 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "LabName": {
+            "type": "String",
+            "defaultValue": "Ethical_Hacking_Class_Demo_Lab",
+            "metadata": {
+                "description": "Azure Lab Services Lab Name."
+            }
+        },        
+        "AdminUser": {
+            "type": "string",
+            "defaultValue":"adminuser",
+            "metadata": {
+                "description": "Azure Lab Services virtual machine administrator name."
+            }
+        },
+        "AdminPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Azure Lab Services virtual machine administrator password."
+            }
+        }
+    },
+    "variables": {
+        "location": "southcentralus",
+        "labPlanName": "[concat('EHDemo_',uniqueString(resourceGroup().id, deployment().name))]",
+        "faux_CommunityGalleryId": "/subscriptions/da8f3095-ac12-4ef2-9b35-fcd24842e207/resourceGroups/DemoClassTypes/providers/Microsoft.Compute/galleries/Faux_CommunityGallery"
+    },
+    "resources": [   
+         {
+            "type": "Microsoft.LabServices/labPlans",
+            "apiVersion": "2021-11-15-preview",
+            "name": "[variables('labPlanName')]",
+            "location": "[variables('Location')]",
+            "properties": {
+                "allowedRegions": [
+                    "[variables('Location')]"
+                ],
+                "sharedGalleryId": "[variables('faux_CommunityGalleryId')]"
+            }
+        },     
+        {
+            "type": "Microsoft.LabServices/labs",
+            "apiVersion": "2021-11-15-preview",
+            "name": "[parameters('LabName')]",
+            "location": "[variables('Location')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.LabServices/labPlans/', variables('labPlanName'))]"
+            ],
+            "properties": {
+                "networkProfile": {},
+                "autoShutdownProfile": {
+                    "shutdownOnDisconnect": "Enabled",
+                    "shutdownWhenNotConnected": "Enabled",
+                    "shutdownOnIdle": "UserAbsence",
+                    "disconnectDelay": "PT15M",
+                    "noConnectDelay": "PT15M",
+                    "idleDelay": "PT15M"
+                },
+                "connectionProfile": {
+                    "webSshAccess": "None",
+                    "webRdpAccess": "None",
+                    "clientSshAccess": "None",
+                    "clientRdpAccess": "Public"
+                },
+                "virtualMachineProfile": {
+                    "createOption": "Image",
+                    "imageReference": {
+                        "id": "/subscriptions/da8f3095-ac12-4ef2-9b35-fcd24842e207/resourceGroups/DemoClassTypes/providers/Microsoft.Compute/galleries/Faux_CommunityGallery/images/FauxEthicalHackingImage"
+                    },
+                    "sku": {
+                        "name": "Classic_Fsv2_4_8GB_128_S_SSD",
+                        "capacity": 1
+                    },
+                    "additionalCapabilities": {
+                        "installGpuDrivers": "Disabled"
+                    },
+                    "usageQuota": "PT10H",
+                    "useSharedPassword": "Enabled",
+                    "adminUser": {
+                        "username": "[parameters('AdminUser')]",
+                        "password" : "[parameters('AdminPassword')]"
+                    }
+                },
+                "securityProfile": {
+                    "openAccess": "Disabled"
+                },
+                "rosterProfile": {                },
+                "labPlanId": "[resourceId('Microsoft.LabServices/labPlans', variables('LabPlanName'))]",
+                "title": "[parameters('LabName')]"
+            }
+        }        
+    ]
+}
+   
