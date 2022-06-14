@@ -541,12 +541,12 @@ function New-AzLabsBulk {
                     Write-Host "Starting lab creation $($obj.LabName)"
 
                     try {
-                        Write-Host "AA Create Lab $($obj.LabName): $(Get-Date)"
+                        Write-Host "Create Lab $($obj.LabName): $(Get-Date)"
                         $currentLab = New-AzLabServicesLab @FullParameterList
-                        #if ($PublishLab.IsPresent) {
-                            Write-Host "Inline Publish"
+                        if ($PublishLab.IsPresent) {
+                            Write-Host "Publishing $($obj.LabName) inline."
                             Publish-AzLabServicesLab -Lab $currentLab | Out-Null
-                        #}
+                        }
                     }
                     catch {
                         Write-Host "In Catch $($obj.LabName): $(Get-Date): $_"
