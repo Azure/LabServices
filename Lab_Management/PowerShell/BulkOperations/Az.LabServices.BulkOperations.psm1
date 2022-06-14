@@ -374,6 +374,10 @@ function New-AzLabsBulk {
         $labs,
 
         [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
+        [switch]
+        $PublishLab,
+
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
         [int]
         $ThrottleLimit = 5
     )
@@ -442,9 +446,11 @@ function New-AzLabsBulk {
 
                     # Try to get shared image and then gallery image
                     Write-Host "Image Name: $($obj.ImageName)"
-                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {$_.DisplayName -eq $obj.ImageName} | Where-Object { $_.EnabledState.ToString() -eq "Enabled"}
-                    if (-not $img) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }
-                    if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image. $(@($img).Count.ToString())" }
+                    $images = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {$_.DisplayName -eq $obj.ImageName} 
+                    if (-not $images) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }                    
+                    $img = $images | Where-Object { $_.EnabledState.ToString() -eq "Enabled"}
+                    if (-not $img) { Write-Error "$($obj.ImageName) is not enabled." }
+                    if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one enabled image. $(@($img).Count.ToString())" }
 
                     # Set the TemplateVmState, defaulting to enabled
                     if (Get-Member -InputObject $obj -Name TemplateVmState) {
@@ -506,9 +512,6 @@ function New-AzLabsBulk {
                         $ImageInformation.Add("ImageReferenceVersion",$img.Version)
                     }
                     
-                    #$hashTags = @{}
-                    #$tempTags = $obj.Tags -split ";"
-                    #$tempTags | ForEach-Object { $hashTags.Add("Tag$($tempTags.IndexOf($_))", $_)}
                     $hashTags = ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n")) 
                     
                     $NewLabParameters = @{
@@ -538,12 +541,16 @@ function New-AzLabsBulk {
                     Write-Host "Starting lab creation $($obj.LabName)"
 
                     try {
+                        Write-Host "AA Create Lab $($obj.LabName): $(Get-Date)"
                         $currentLab = New-AzLabServicesLab @FullParameterList
+                        #if ($PublishLab.IsPresent) {
+                            Write-Host "Inline Publish"
+                            Publish-AzLabServicesLab -Lab $currentLab | Out-Null
+                        #}
                     }
                     catch {
-                        Write-Host "In Catch: $_"
-                        Start-Sleep -Seconds 30
-                        $currentLab = New-AzLabServicesLab @FullParameterList
+                        Write-Host "In Catch $($obj.LabName): $(Get-Date): $_"
+                        Write-Error "Catch Error: $_"
                     }
                     Write-Host "Lab $($obj.LabName) provisioning state $($currentLab.ProvisioningState)"
                     Write-Host "Completed lab creation step in $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes"
@@ -1219,55 +1226,60 @@ function Reset-AzLabUserQuotaBulk {
 
             Write-Verbose "object inside the Update-AzLabUserQuotaBulk-Job block $obj"
 
-            Import-Module -Name Az.LabServices
+            Import-Module -Name Az.LabServices -Force
 
             Write-Verbose "ConfigObject: $($obj | ConvertTo-Json -Depth 40)"
+            
+            Write-Host "Checking lab '$($obj.Name)' for student quotas..."
 
-            $la = Get-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabPlanName)
-            if (-not $la -or @($la).Count -ne 1) { Write-Error "Unable to find lab plan $($obj.LabPlanName)."}
+            # Get all users for the lab
+            $users = Get-AzLabServicesUser -Lab $obj
 
-            $lab = Get-AzLabServicesLab -LabPlan $la -Name $($obj.LabName)
-            if (-not $lab -or @($lab).Count -ne 1) { Write-Error "Unable to find lab $($obj.LabName)."}
-
-            Write-Host "Checking lab '$($lab.Name)' in lab plan '$($la.Name)' for student quotas..."
-
-            $users = Get-AzLabServicesUser -Lab $lab #-Email "*"
             $totalUserCount = ($users | Measure-Object).Count
             Write-Host "  This lab has '$totalUserCount' users..."
             Write-Host "  Updating the users to have $($obj.UsageQuota) quota remaining..."
-            $currentLabQuota = $lab.VirtualMachineProfileUsageQuota #Convert-UsageQuotaToHours($lab.VirtualMachineProfileUsageQuota)
+            
+            $currentLabQuota = $obj.VirtualMachineProfileUsageQuota
+            Write-Debu "Current Lab Quota $currentLabQuota"
             foreach ($user in $users) {
-                $totalUsage = $user.TotalUsage #Convert-UsageQuotaToHours($user.TotalUsage)
+                # Get what the user has used
+                Write-Debug "User: $($user.DisplayName) total usage $($user.TotalUsage)"
+                $totalUsage = $user.TotalUsage
+                # Get users additional quota
                 if ($user -contains "additionalUsageQuota") {
-                    $currentUserQuota = $user.additionalUsageQuota #Convert-UsageQuotaToHours($user.additionalUsageQuota)
+                    Write-Debug "Getting additional individual usage quota."
+                    $currentUserQuota = $user.additionalUsageQuota
+                    Write-Debug "Current User Quota $currentUserQuota"
                 }
                 else {
                     $currentUserQuota = 0
                 }
 
+                Write-Debug "Calculate usage. User: $($user.DisplayName) total usage $totalUsage additional usage $currentUserQuota"
+                Write-Debug "Usage quota $($obj.UsageQuota)"
+
                 # if the usage (column from csv) and the available hours are less than the Lab quota set the user quota to zero
-                if (([int]$obj.UsageQuota + $totalUsage) -le $currentLabQuota) {
-                    Update-AzLabServicesUser -Lab $lab -Name $user.Name -AdditionalUsageQuota 0 | Out-Null
-                } else {
+                if (($(New-Timespan -Hours $obj.UsageQuota) + $totalUsage) -gt $currentLabQuota) {
                     #totalUserUsage is the current quota for the lab and the user
                     $totalUserUsage = ($currentLabQuota + $currentUserQuota)
+                    Write-Debug "totalUserUsage $totalUserUsage"
                     #individualUserNeeds is the user used time and the expected available time
-                    $individualUserNeeds = ([int]$obj.UsageQuota) + $totalUsage
+                    $individualUserNeeds = (New-Timespan -Hours $obj.UsageQuota) + $totalUsage
                     # subtract totalUserUsage from individualUserNeeds, positives will be added to user quota, negatives removed.
                     $diff = ($individualUserNeeds - $totalUserUsage)
                     #Adjust the current user quota
                     $newuserQuota = $currentUserQuota + $diff
                     if ($newuserQuota -ge 0) {
-                        Update-AzLabServicesUser -Lab $lab -Name $user.Name -AdditionalUsageQuota $newuserQuota | Out-Null
+                        Write-Debug "User: $($user.DisplayName) is changed by $newuserQuota"
+                        Update-AzLabServicesUser -Lab $obj -Name $user.Name -AdditionalUsageQuota $newuserQuota | Out-Null
                     }
                     else {
                         # Reduce the user quota but only to zero
+                        Write-Debug "newuserquota negative"
                         $removeDiff = ($currentUserQuota + $newuserQuota)
                         if ($removeDiff -ge 0) {
-                            Update-AzLabServicesUser -Lab $lab -Name $user.Name -AdditionalUsageQuota $removeDiff | Out-Null
-                        }
-                        else {
-                            Update-AzLabServicesUser -Lab $lab -Name $user.Name -AdditionalUsageQuota 0 | Out-Null
+                            Write-Debug "User: $($user.DisplayName) is decreased by $removeDiff"
+                            Update-AzLabServicesUser -Lab $obj -Name $user.Name -AdditionalUsageQuota $removeDiff | Out-Null
                         }
                     }
                 }
@@ -1276,7 +1288,7 @@ function Reset-AzLabUserQuotaBulk {
 
         $jobs = $aggregateLabs | ForEach-Object {
                 Write-Verbose "From config: $_"
-                Start-ThreadJob -ScriptBlock $block -ArgumentList $_, $PSScriptRoot -Name $_.LabName -ThrottleLimit $ThrottleLimit
+                Start-ThreadJob -ScriptBlock $block -ArgumentList $_, $PSScriptRoot -Name $_.Name -ThrottleLimit $ThrottleLimit
             }
 
         JobManager -currentJobs $jobs -ResultColumnName "ResetQuotaResult"
