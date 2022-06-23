@@ -1240,7 +1240,7 @@ function Reset-AzLabUserQuotaBulk {
             Write-Host "  Updating the users to have $($obj.UsageQuota) quota remaining..."
             
             $currentLabQuota = $obj.VirtualMachineProfileUsageQuota
-            Write-Debu "Current Lab Quota $currentLabQuota"
+            Write-Debug "Current Lab Quota $currentLabQuota"
             foreach ($user in $users) {
                 # Get what the user has used
                 Write-Debug "User: $($user.DisplayName) total usage $($user.TotalUsage)"
@@ -1259,7 +1259,9 @@ function Reset-AzLabUserQuotaBulk {
                 Write-Debug "Usage quota $($obj.UsageQuota)"
 
                 # if the usage (column from csv) and the available hours are less than the Lab quota set the user quota to zero
-                if (($(New-Timespan -Hours $obj.UsageQuota) + $totalUsage) -gt $currentLabQuota) {
+                if (($(New-Timespan -Hours $obj.UsageQuota) + $totalUsage) -le $currentLabQuota) {
+                    Update-AzLabServicesUser -Lab $obj -Name $user.Name -AdditionalUsageQuota 0 | Out-Null
+                } else {
                     #totalUserUsage is the current quota for the lab and the user
                     $totalUserUsage = ($currentLabQuota + $currentUserQuota)
                     Write-Debug "totalUserUsage $totalUserUsage"
@@ -1278,6 +1280,10 @@ function Reset-AzLabUserQuotaBulk {
                         Write-Debug "newuserquota negative"
                         $removeDiff = ($currentUserQuota + $newuserQuota)
                         if ($removeDiff -ge 0) {
+                            Update-AzLabServicesUser -Lab $obj -Name $user.Name -AdditionalUsageQuota $removeDiff | Out-Null
+                        }
+                        else {
+                    
                             Write-Debug "User: $($user.DisplayName) is decreased by $removeDiff"
                             Update-AzLabServicesUser -Lab $obj -Name $user.Name -AdditionalUsageQuota $removeDiff | Out-Null
                         }
