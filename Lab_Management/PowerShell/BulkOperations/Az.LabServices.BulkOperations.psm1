@@ -1505,16 +1505,6 @@ function Confirm-AzLabsBulk {
                     }
                 }
         
-                # TODO:  Validate SharedPassword is set correctly
-                # TODO:  We should validate that the user quota is set correctly
-                # TODO:  We should validate the GPU driver settings
-                # TODO:  Validate the title & Description are set correctly
-                # TODO:  validate Linux RDP is set to false
-                # TODO:  If there are emails, validate those are setup for the lab
-                # TODO:  If there are lab owners, validate they have the right permissions
-                # TODO:  validate the settings (idleGracePeriod, idleOsGracePeriod, idleNoConnectGracePeriod)
-                # TODO:  If there's a schedule, validate it is set correctly
-                # TODO:  If there were invitations supposed to be sent out, validate that those were sent
             }
 
             $jobs = @()

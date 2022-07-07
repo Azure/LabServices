@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 $excludeLabs = @('*test*','*demo*','*training*', '*how to*')
 
 # Number of available hours we reset the student to when running this script
-$usageQuota = 9
+$usageQuota = 8
 
 # Segment of labs to update based on lab accounts, regular expression to match
 
@@ -25,18 +25,10 @@ Write-Output "Connecting service connection to Azure resources..."
 # Ensures you inherit azcontext in your Azure Automation runbook
 Enable-AzContextAutosave -Scope Process
 
-# Setup Azure Runbook Connection using System ManagedId
-try {
-        $AzureContext = (Connect-AzAccount -Identity).context
-    }
-catch{
-        Write-Output "There is no system-assigned user identity. Aborting."; 
-        exit
-    }
-
-# set and store context
-$AzureContext = Set-AzContext -SubscriptionName $AzureContext.Subscription `
-    -DefaultProfile $AzureContext
+# Setup Azure Runbook Connection
+$Conn = Get-AutomationConnection -Name AzureRunAsConnection
+Connect-AzAccount -ServicePrincipal -Tenant $Conn.TenantID -ApplicationId $Conn.ApplicationID -CertificateThumbprint $Conn.CertificateThumbprint
+Select-AzSubscription -Subscription $Conn.SubscriptionId | Out-Null
 
 # Make sure we have the modules already imported via the automation account
 if (-not (Get-Command -Name "Get-AzLabServicesLabPlan" -ErrorAction SilentlyContinue)) {
@@ -49,7 +41,6 @@ if (-not (Get-Command -Name "Start-ThreadJob" -ErrorAction SilentlyContinue)) {
     Write-Error "Unable to find the ThreadJob Powershell module, please add to the Azure Automation account"
 }
 
-# -DefaultProfile $AzureContext
 $labPlans = Get-AzLabServicesLabPlan | Where-Object {
     $_.Name -match $labPlanNameRegex
 }
