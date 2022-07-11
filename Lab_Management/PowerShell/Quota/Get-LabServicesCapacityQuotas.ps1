@@ -9,13 +9,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 This script checks all the quotas for Lab Services across all regions
 
 .PARAMETER OutputCSV
-If you would like more data produced into a CSV file, provide the filename.
+If you would like to return the data on the pipeline, provide the -PassThru
 #>
 
 param
 (
-    [Parameter(Mandatory=$false, HelpMessage="If you would like more data produced into a CSV file, provide the filename.")]
-    [string] $OutputCSV
+    [Parameter(Mandatory=$false, HelpMessage="To return the quota data on the pipeline, pass the 'PassThru' switch")]
+    [switch] $PassThru
 )
 
 $subscriptionId = (Get-AzContext).Subscription.Id
@@ -81,7 +81,7 @@ $quotas = $availableRegionsForLabs | ForEach-Object {
                             $availableCores = $_.limit - $_.currentValue
                             ($labsSizes[$_.name.value].GetEnumerator() | ForEach-Object {
                                 "$([Math]::Floor($availableCores / $_.Value)) $($_.Name)"
-                            }) -join ', ' }}
+                            }) -join ' | ' }}
                             
     }
     catch [System.Net.WebException] {
@@ -89,16 +89,17 @@ $quotas = $availableRegionsForLabs | ForEach-Object {
     }
 }
 
-Write-Host "Quotas per Size:" -ForegroundColor Green
-$quotas | Group-Object -Property LabSize | 
-    Where-Object {$_.Name -and $_.Name -ine "labPlans" -and $_.Name -ine "labs"} |  # There are some sizes we have quotas for like Esv2 that aren't mapped
-    ForEach-Object {
-        Write-Host "Lab Sizes:  $($_.Name)" -ForegroundColor Cyan
-        $_.Group | 
-            Select-Object -Property RegionName, UsedCores, TotalCores, PercentUsed, AvailableVMs | 
-            Format-Table -AutoSize
-    }
+$groups = $quotas | Group-Object -Property LabSize | 
+    Where-Object {$_.Name -and $_.Name -ine "labPlans" -and $_.Name -ine "labs"}  # There are some sizes we have quotas for like Esv2 that aren't mapped
 
-if ($OutputCSV) {
-    $quotas | Export-Csv -NoTypeInformation -Path $OutputCSV
+foreach ($group in $groups) {
+    Write-Host "Lab Sizes:  $($group.Name)" -ForegroundColor Cyan
+    $group.Group | 
+        Select-Object -Property RegionName, UsedCores, TotalCores, PercentUsed, AvailableVMs | 
+        Format-Table -AutoSize | Out-String | Write-Host
+}
+
+if ($PassThru) {
+    # return the quota data on the pipeline 
+    return $quotas
 }
