@@ -21,21 +21,33 @@ param
 $subscriptionId = (Get-AzContext).Subscription.Id
 
 $labsSizes = [Ordered]@{
-    Fsv2 = [Ordered]@{
-        "Small" = 2
-        "Medium" = 4
-        "Large" = 8
+    Fsv2 = @{
+        Name = "CPU Cores (Fsv2)"
+        Sizes = [Ordered]@{
+            "Small" = 2
+            "Medium" = 4
+            "Large" = 8
+            }
         }
-    Dsv4 = [Ordered]@{
-        "Medium (Nested Virtualization)" = 4
-        "Large (Nested Virtualization)" = 8
+    Dsv4 = @{
+        Name = "CPU Virtualization Cores (Dsv4)"
+        Sizes = [Ordered]@{
+            "Medium (Nested Virtualization)" = 4
+            "Large (Nested Virtualization)" = 8
+            }
         }
-    NCv3T4 = [Ordered]@{
-        "Small GPU (Compute)" = 6
+    NCv3T4 = @{
+        Name = "GPU Compute (NCv3T4)"
+        Sizes = [Ordered]@{
+            "Small GPU (Compute)" = 6
+            }
         }
-    NVv4 = [Ordered]@{
-        "Small GPU (Visualization)" = 8
-        "Medium GPU (Visualization)" = 12
+    NVv4 = @{
+        Name = "GPU Visualization (NVv4)"
+        Sizes = [Ordered]@{
+            "Small GPU (Visualization)" = 8
+            "Medium GPU (Visualization)" = 12
+            }
         }
 }
 
@@ -73,13 +85,13 @@ $quotas = $availableRegionsForLabs | ForEach-Object {
                     @{Name = 'Region'; Expression = {$region}},
                     @{Name = 'RegionName'; Expression = {$regionDisplayName}},
                     @{Name = 'Size'; Expression = {$_.name.value}},
-                    @{Name = "LabSize"; Expression = {$labsSizes[$_.name.value].Keys -Join ", "}},
+                    @{Name = "LabSize"; Expression = {$labsSizes[$_.name.value].Name}},
                     @{Name = 'UsedCores'; Expression = {$_.currentValue}},
                     @{Name = 'TotalCores'; Expression = {$_.limit}},
                     @{Name = 'PercentUsed'; Expression = {[Math]::Round($_.currentValue / $_.limit * 100)}},
                     @{Name = 'AvailableVMs'; Expression = {
                             $availableCores = $_.limit - $_.currentValue
-                            ($labsSizes[$_.name.value].GetEnumerator() | ForEach-Object {
+                            ($labsSizes[$_.name.value].Sizes.GetEnumerator() | ForEach-Object {
                                 "$([Math]::Floor($availableCores / $_.Value)) $($_.Name)"
                             }) -join ' | ' }}
                             
@@ -93,11 +105,14 @@ $groups = $quotas | Group-Object -Property LabSize |
     Where-Object {$_.Name -and $_.Name -ine "labPlans" -and $_.Name -ine "labs"}  # There are some sizes we have quotas for like Esv2 that aren't mapped
 
 foreach ($group in $groups) {
-    Write-Host "Lab Sizes:  $($group.Name)" -ForegroundColor Cyan
+    Write-Host "Type of Cores:  $($group.Name)" -ForegroundColor Cyan
     $group.Group | 
         Select-Object -Property RegionName, UsedCores, TotalCores, PercentUsed, AvailableVMs | 
         Format-Table -AutoSize | Out-String | Write-Host
 }
+
+Write-Host "More information about sizes can be found here:" -ForegroundColor Green
+Write-Host "https://docs.microsoft.com/en-us/azure/lab-services/administrator-guide" -ForegroundColor Green
 
 if ($PassThru) {
     # return the quota data on the pipeline 
