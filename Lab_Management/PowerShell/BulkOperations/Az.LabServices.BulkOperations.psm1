@@ -1219,19 +1219,18 @@ function Reset-AzLabUserQuotaBulk {
 
             Write-Verbose "object inside the Update-AzLabUserQuotaBulk-Job block $obj"
 
-            Import-Module -Name Az.LabServices
+            Import-Module -Name Az.LabServices -Force
 
-            Write-Verbose "ConfigObject: $($obj | ConvertTo-Json -Depth 40)"
+            Write-Debug "ConfigObject: $($obj | ConvertTo-Json -Depth 40)"
+            Write-Host "Checking lab '$($obj.LabName)' for student quotas..."
 
-            $la = Get-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabPlanName)
-            if (-not $la -or @($la).Count -ne 1) { Write-Error "Unable to find lab plan $($obj.LabPlanName)."}
-
-            $lab = Get-AzLabServicesLab -LabPlan $la -Name $($obj.LabName)
+            $lab = Get-AzLabServicesLab -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabName)
             if (-not $lab -or @($lab).Count -ne 1) { Write-Error "Unable to find lab $($obj.LabName)."}
 
-            Write-Host "Checking lab '$($lab.Name)' in lab plan '$($la.Name)' for student quotas..."
+            Write-Host "Checking lab '$($lab.Name)' in resource group $($obj.ResourceGroupName) for student quotas..."
 
             $users = Get-AzLabServicesUser -Lab $lab #-Email "*"
+
             $totalUserCount = ($users | Measure-Object).Count
             Write-Host "  This lab has '$totalUserCount' users..."
             Write-Host "  Updating the users to have $($obj.UsageQuota) quota remaining..."
@@ -1246,13 +1245,13 @@ function Reset-AzLabUserQuotaBulk {
                 }
 
                 # if the usage (column from csv) and the available hours are less than the Lab quota set the user quota to zero
-                if (([int]$obj.UsageQuota + $totalUsage) -le $currentLabQuota) {
+                if (($(New-Timespan -Hours $obj.UsageQuota) + $totalUsage) -le $currentLabQuota) {
                     Update-AzLabServicesUser -Lab $lab -Name $user.Name -AdditionalUsageQuota 0 | Out-Null
                 } else {
                     #totalUserUsage is the current quota for the lab and the user
                     $totalUserUsage = ($currentLabQuota + $currentUserQuota)
                     #individualUserNeeds is the user used time and the expected available time
-                    $individualUserNeeds = ([int]$obj.UsageQuota) + $totalUsage
+                    $individualUserNeeds = (New-Timespan -Hours $obj.UsageQuota) + $totalUsage
                     # subtract totalUserUsage from individualUserNeeds, positives will be added to user quota, negatives removed.
                     $diff = ($individualUserNeeds - $totalUserUsage)
                     #Adjust the current user quota
@@ -1506,16 +1505,6 @@ function Confirm-AzLabsBulk {
                     }
                 }
         
-                # TODO:  Validate SharedPassword is set correctly
-                # TODO:  We should validate that the user quota is set correctly
-                # TODO:  We should validate the GPU driver settings
-                # TODO:  Validate the title & Description are set correctly
-                # TODO:  validate Linux RDP is set to false
-                # TODO:  If there are emails, validate those are setup for the lab
-                # TODO:  If there are lab owners, validate they have the right permissions
-                # TODO:  validate the settings (idleGracePeriod, idleOsGracePeriod, idleNoConnectGracePeriod)
-                # TODO:  If there's a schedule, validate it is set correctly
-                # TODO:  If there were invitations supposed to be sent out, validate that those were sent
             }
 
             $jobs = @()
