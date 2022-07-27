@@ -446,6 +446,15 @@ function New-AzLabsBulk {
                     if (-not $img) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }
                     if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image. $(@($img).Count.ToString())" }
 
+                    # Add the Canvas information
+                    $rosterParameters = @{}
+                    if (Get-Member -InputObject $obj -Name LtiContextId) {
+                        $rosterParameters.Add("RosterProfileLmsInstance", $obj.LmsInstance)
+                        $rosterParameters.Add("RosterProfileLtiClientId", $obj.LtiClientId)
+                        $rosterParameters.Add("RosterProfileLtiContextId", $obj.LtiContextId)
+                        $rosterParameters.Add("RosterProfileLtiRosterEndpoint", $obj.LtiRosterEndpoint)                        
+                    }
+
                     # Set the TemplateVmState, defaulting to enabled
                     if (Get-Member -InputObject $obj -Name TemplateVmState) {
                         if ($obj.TemplateVmState -and ($obj.TemplateVmState -ieq "Disabled")) {
@@ -533,7 +542,7 @@ function New-AzLabsBulk {
 
                     }
                     
-                    $FullParameterList = $NewLabParameters + $idleGracePeriodParameters + $enableDisconnectOnIdleParameters + $idleNoConnectGracePeriodParameters + $ConnectionProfile + $ImageInformation
+                    $FullParameterList = $NewLabParameters + $idleGracePeriodParameters + $enableDisconnectOnIdleParameters + $idleNoConnectGracePeriodParameters + $ConnectionProfile + $ImageInformation + $rosterParameters
                     
                     Write-Host "Starting lab creation $($obj.LabName)"
 
