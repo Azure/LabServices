@@ -1,6 +1,6 @@
 # Lab Services
 
-This repository contains samples extending and improving the Azure Lab Services January 2022 update experience.  The goal is to have a place where everyone can find new and different ways to improve their experience with Lab Services and contribute\improve existing samples.  We will be migrating over existing code from the [Azure-DevTestLab repository](https://github.com/Azure/azure-devtestlab/tree/master/samples/ClassroomLabs) depending on need.  If there is something that you want, feel free to create an issue.
+This repository contains samples extending and improving the Azure Lab Services August 2022 update experience.  The goal is to have a place where everyone can find new and different ways to improve their experience with Lab Services and contribute\improve existing samples.  We will be migrating over existing code from the [Azure-DevTestLab repository](https://github.com/Azure/azure-devtestlab/tree/master/samples/ClassroomLabs) depending on need.  If there is something that you want, feel free to create an issue.
 
 ## Overview
 Below is different overarching areas that we have different samples.
