@@ -8,7 +8,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 .SYNOPSIS
 This script checks all the quotas for Lab Services across all regions
 
-.PARAMETER OutputCSV
+.PARAMETER PassThru
 If you would like to return the data on the pipeline, provide the -PassThru
 #>
 
@@ -69,7 +69,7 @@ $locations = Get-AzLocation
 $quotas = $availableRegionsForLabs | ForEach-Object {
     $regionDisplayName = $_
     # Get the short code for the region:
-    $region = ($locations | Where-Object {$_.DisplayName -ieq $regionDisplayName} | Select -First 1).Location
+    $region = ($locations | Where-Object {$_.DisplayName -ieq $regionDisplayName} | Select-Object -First 1).Location
     
     $authHeader = @{
         'Content-Type'='application/json'
