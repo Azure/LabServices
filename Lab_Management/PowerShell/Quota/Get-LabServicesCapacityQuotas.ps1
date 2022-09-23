@@ -8,7 +8,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 .SYNOPSIS
 This script checks all the quotas for Lab Services across all regions
 
-.PARAMETER -PassThru
+.PARAMETER PassThru
 If you would like to return the data on the pipeline, provide the -PassThru
 #>
 
