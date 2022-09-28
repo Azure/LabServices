@@ -79,14 +79,14 @@ foreach ($vmSkuFamily in $labsSizes.Values){
 }
 Write-Host ""
 
-Write-Host "**************************" 
-Write-Host "Notes:" 
+Write-Host "**************************"  -ForegroundColor Green
+Write-Host "Notes:" -ForegroundColor Green
 Write-Host "- Additional cores quota requests are organized by the compute sku family." 
 Write-Host "- To see current alloted quota for a subscription, run Get-LabServicesCapacityQuotas.ps1"
 Write-Host ""
-Write-Host "Results:"
+Write-Host "Results:" -ForegroundColor Green
 $neededQuotaArray | Format-Table
-Write-Host "**************************" 
+Write-Host "**************************" -ForegroundColor Green
 
 if ($PassThru) {
     # return the quota data on the pipeline 
