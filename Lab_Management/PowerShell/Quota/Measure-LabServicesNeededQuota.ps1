@@ -82,7 +82,7 @@ Write-Host ""
 Write-Host "**************************"  -ForegroundColor Green
 Write-Host "Notes:" -ForegroundColor Green
 Write-Host "- Additional cores quota requests are organized by the compute sku family." 
-Write-Host "- To see current alloted quota for a subscription, run Get-LabServicesCapacityQuotas.ps1"
+Write-Host "- To see current alloted quota, please check the Azure Portal (Subscriptions -> Usage & Quotas)"
 Write-Host ""
 Write-Host "Results:" -ForegroundColor Green
 $neededQuotaArray | Format-Table
