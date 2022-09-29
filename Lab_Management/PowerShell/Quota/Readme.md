@@ -1,5 +1,5 @@
 # Introduction
-This script is used to check the Azure Lab Services quotas across all regions for a specific subscription.  The results can be saved to a CSV file along with displayed to the console.
+This script is used to calculate how many cores are needed in each family for the Lab Services virtual machine sizes.  This is commonly used when requesting additional quota for Azure Lab Services.  The results can be saved to a CSV file along with displayed to the console.
 
 ## Prerequisites
 - [Azure PowerShell module](https://docs.microsoft.com/powershell/azure)
@@ -7,14 +7,14 @@ This script is used to check the Azure Lab Services quotas across all regions fo
 
 # Directions
 1. Open a PowerShell window.
-2. Run `Get-LabServicesCapacityQuotas.ps1` .  If you would like to save the quota details to a CSV file, please use the "OutputCSV" parameter and specify a filename.
+2. Run `Measure-LabServicesNeededQuota.ps1` .  If you would like to return the results on the pipeline, please use the "PassThru" parameter.
 
 ``` Powershell
-    # Display the details on Quotas to the console
-    Get-LabServicesCapacityQuotas.ps1
+    # Calculate the cores needed for a Lab Services Virtual Machine Size:
+    Measure-LabServicesNeededQuota.ps1
 
-    # Display the Quotas and output the full data to a CSV file
-    .\Get-LabServicesCapacityQuotas.ps1 -PassThru | Export-Csv -Path .\quotas.csv -NoTypeInformation
+    # Calculate the cores needed and write the results to a CSV file
+    Measure-LabServicesNeededQuota.ps1 -PassThru | Export-Csv -Path .\CoresNeeded.csv -NoTypeInformation
 
 ```
 
