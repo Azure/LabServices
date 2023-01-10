@@ -94,8 +94,20 @@ function Import-LabsCsv {
         if ($_.UserName -and ($_.UserName -ieq "test0000")) {
             Write-Warning "Lab $($_.LabName) is using the default UserName from the example CSV, please update it for security reasons"
         }
+
         if ($_.Password -and ($_.Password -ieq "Test00000000")) {
             Write-Warning "Lab $($_.LabName) is using the default Password from the example CSV, please update it for security reasons"
+        }
+
+        if ((Get-Member -InputObject $_ -Name 'Size') -and ($_.Size)) {
+            #Azure Labs currently is case sensitive for matching the VM size; for now, try to ensure that the first two segments in the VM size are in title case to match what Azure Labs expects.
+            #For example, converts CLASSIC_FSV2_2_4GB_128_S_SSD to Classic_Fsv2_2_4GB_128_S_SSD
+            $sizeValues = ($_.Size.Split('_')).Trim()
+            if ($sizeValues[0] -and $sizeValues[1]) {
+                $sizeValues[0] = (Get-Culture).TextInfo.ToTitleCase($sizeValues[0].toLower())
+                $sizeValues[1] = (Get-Culture).TextInfo.ToTitleCase($sizeValues[1].toLower())
+                $_.Size = $sizeValues -join "_"
+            }
         }
 
         if ((Get-Member -InputObject $_ -Name 'Emails') -and ($_.Emails)) {
@@ -132,7 +144,6 @@ function Import-LabsCsv {
 
         if (Get-Member -InputObject $_ -Name 'GpuDriverEnabled') {
             if ($_.GpuDriverEnabled) {
-                #$_.GpuDriverEnabled = [System.Convert]::ToBoolean($_.GpuDriverEnabled)
                 $_.GpuDriverEnabled = "Enabled"
             }
             else {
