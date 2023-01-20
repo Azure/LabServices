@@ -589,6 +589,17 @@ function New-AzLabsBulk {
                         $ImageInformation.Add("ImageReferenceSku",$img.Sku)
                         $ImageInformation.Add("ImageReferenceVersion",$img.Version)
                     }
+
+                    # If the lab plan has a subnet, we should use it in the create lab request
+                    if ($plan -and $plan.DefaultNetworkProfileSubnetId) {
+                        $subnetParameters = @{
+                            NetworkProfileSubnetId = $plan.DefaultNetworkProfileSubnetId
+                        }
+                    }
+                    else {
+                        $subnetParameters = @{
+                        }
+                    }
                     
                     if ((Get-Member -InputObject $obj -Name 'Tags') -and ($obj.Tags)) {
                         $hashTags = @{
@@ -596,7 +607,8 @@ function New-AzLabsBulk {
                         }
                     }
                     else {
-                        $hashTags = $null
+                        $hashTags = @{
+                        }
                     }
 
                     $NewLabParameters = @{
@@ -618,11 +630,15 @@ function New-AzLabsBulk {
                         VirtualMachineProfileUsageQuota = $(New-TimeSpan -Hours $obj.UsageQuota).ToString();
                         VirtualMachineProfileUseSharedPassword = $obj.SharedPassword;
                     }
-                    
-                    $FullParameterList = $NewLabParameters + $idleGracePeriodParameters + $enableDisconnectOnIdleParameters + $idleNoConnectGracePeriodParameters + $ConnectionProfile + $ImageInformation
-                    if ($hashTags) {
-                        $FullParameterList = $FullParameterList + $hashTags
-                    }
+                    Write-Host "Try to combine parameters"
+                    $FullParameterList = $NewLabParameters + `
+                                         $idleGracePeriodParameters + `
+                                         $enableDisconnectOnIdleParameters + `
+                                         $idleNoConnectGracePeriodParameters + `
+                                         $ConnectionProfile + `
+                                         $ImageInformation + `
+                                         $hashTags + `
+                                         $subnetParameters
 
                     Write-Host "Starting lab creation $($obj.LabName)"
 
