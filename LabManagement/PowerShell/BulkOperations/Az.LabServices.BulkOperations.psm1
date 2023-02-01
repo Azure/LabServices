@@ -8,9 +8,41 @@
 if (-not (Get-Command -Name "Start-ThreadJob" -ErrorAction SilentlyContinue)) {
     Install-Module -Name ThreadJob -Scope CurrentUser -Force
 }
+# Install the Az.LabServices module if the command isn't available
+if (-not (Get-Command -Name "Get-AzLabServicesLab" -ErrorAction SilentlyContinue)) {
+    Install-Module -Name Az.LabServices -Scope CurrentUser -Force
+}
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Validate-SkuName {
+    param(
+        [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string] $Sku
+        )
+
+    # We look up the correct size from the API, this way user can give us size or name
+    $subscriptionId = (Get-AzContext).Subscription.Id
+    $allSkus = (Invoke-AzRestMethod -Uri https://management.azure.com/subscriptions/$subscriptionId/providers/Microsoft.LabServices/skus?api-version=2022-08-01 | Select-Object -Property "Content" -ExpandProperty Content | ConvertFrom-Json).value
+
+    # We need to match against the "name" field - this matches things like:
+    #    "Basic" and "Fsv2_2_4GB_128_S_SSD"
+    $size = $allSKus | Where-Object {$_.name -ieq $Sku} | Select-Object -First 1
+
+    if ($size) {
+        # If we have a 'classic' size, we need to format slightly differently
+        if ($size.tier -ieq "Classic") {
+            return "$($size.tier)_$($size.size)"
+        }
+        else {
+            return $size.name
+        }
+    }
+    else {
+        Write-Error "Size '$Sku' not currently available in Azure Lab Services"
+    }
+}
 
 function Import-LabsCsv {
     param(
@@ -32,6 +64,9 @@ function Import-LabsCsv {
     }
 
     $labs = Import-Csv -Path $CsvConfigFile
+
+    # Make all the resource groups lower case
+    $labs | ForEach-Object {$_.ResourceGroupName = $_.ResourceGroupName.ToLower()}
 
     Write-Verbose ($labs | Format-Table | Out-String)
 
@@ -98,6 +133,13 @@ function Import-LabsCsv {
             Write-Warning "Lab $($_.LabName) is using the default Password from the example CSV, please update it for security reasons"
         }
 
+        if ((Get-Member -InputObject $_ -Name 'Size') -and ($_.Size)) {
+            $_.Size = Validate-SkuName -Sku $_.Size
+        }
+        else {
+            Write-Error "Size is a required field, cannot continue without it"
+        }
+
         if ((Get-Member -InputObject $_ -Name 'Emails') -and ($_.Emails)) {
             $_.Emails = ($_.Emails.Split(';')).Trim()
         }
@@ -117,12 +159,19 @@ function Import-LabsCsv {
         if (!(Get-Member -InputObject $_ -Name 'SharedPassword')) {
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "SharedPassword" -Value 'Disabled'
         }
+        else {
+            if ($_.SharedPassword) {
+                $_.SharedPassword = "Enabled"
+            } else {
+                $_.SharedPassword = "Disabled"
+            }
+        }
 
         if ((Get-Member -InputObject $_ -Name 'UsageMode')) {
             if ($_.UsageMode -eq "Restricted") {
-                $_.UsageMode = "Enabled"
-            } else {
                 $_.UsageMode = "Disabled"
+            } else {
+                $_.UsageMode = "Enabled"
             }
         }
         else {
@@ -132,7 +181,6 @@ function Import-LabsCsv {
 
         if (Get-Member -InputObject $_ -Name 'GpuDriverEnabled') {
             if ($_.GpuDriverEnabled) {
-                #$_.GpuDriverEnabled = [System.Convert]::ToBoolean($_.GpuDriverEnabled)
                 $_.GpuDriverEnabled = "Enabled"
             }
             else {
@@ -274,7 +322,12 @@ function New-AzLabPlansBulk {
             
             $Rgs | ForEach-Object {
                 if (-not (Get-AzResourceGroup -ResourceGroupName $_.ResourceGroupName -EA SilentlyContinue)) {
-                    $taghash = ConvertFrom-StringData -StringData ($_.Tags.Replace(";","`r`n"))
+                    if ((Get-Member -InputObject $_ -Name 'Tags') -and ($_.Tags)) {
+                        $taghash = ConvertFrom-StringData -StringData ($_.Tags.Replace(";","`r`n"))
+                    }
+                    else {
+                        $taghash = $null
+                    }
                     New-AzResourceGroup -ResourceGroupName $_.ResourceGroupName -Location $_.Location -Tags $taghash | Out-null
                     Write-Host "$($_.ResourceGroupName) resource group didn't exist. Created it." -ForegroundColor Green
                 }
@@ -295,7 +348,7 @@ function New-AzLabPlansBulk {
                 Set-StrictMode -Version Latest
                 $ErrorActionPreference = 'Stop'
                 
-                Import-module AZ.Labservices
+                Import-module -Name Az.Labservices
                 
                 $input.movenext() | Out-Null
             
@@ -306,9 +359,16 @@ function New-AzLabPlansBulk {
 
                 Write-Host "Creating Lab Plan: $($obj.LabPlanName)"
                 
-                if ($obj.SharedGalleryId){
+                if ((Get-Member -InputObject $obj -Name 'Tags') -and ($obj.Tags)) {
+                    $taghash = ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n"))
+                }
+                else {
+                    $taghash = $null
+                }
 
-                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -SharedGalleryId $obj.SharedGalleryId -Location $obj.Location -AllowedRegion @($obj.Location) -Tag (ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n")) )
+                if ($obj.SharedGalleryId){
+                    
+                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -SharedGalleryId $obj.SharedGalleryId -Location $obj.Location -AllowedRegion @($obj.Location) -Tag $taghash
 
                     # This will enable the SIG images explicitly listed in the csv.  
                     # For SIG images that are *not* listed in the csv, this will automatically disable them.
@@ -323,21 +383,21 @@ function New-AzLabPlansBulk {
 
                         foreach ($image in $images) {
                             $enableImage = $imageNamesToEnable -contains ($image.Name) # Note: -contains is case insensitive
-    
+                            
                             if ($enableImage -eq $true){
                                 Write-Verbose "Enabling image: $($image.Name)"
-                                $image = $image | Update-AzLabServicesPlanImage -EnabledState Enabled
+                                $image = Update-AzLabServicesPlanImage -LabPlanName $obj.LabPlanName -ResourceGroupName $obj.ResourceGroupName -Name $image.Name -EnabledState Enabled
                             }
                             else {
                                 Write-Verbose "Disabling image: $($image.Name)"
-                                $image = $image | Update-AzLabServicesPlanImage -EnabledState Disabled
+                                $image = Update-AzLabServicesPlanImage -LabPlanName $obj.LabPlanName -ResourceGroupName $obj.ResourceGroupName -Name $image.Name -EnabledState Disabled
                             }
                         }
                     }
 
                     Write-Verbose "Completed creation of $($obj.SharedGalleryId), total duration $(((Get-Date) - $StartTime).TotalSeconds) seconds"
                 } else {
-                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -Location $obj.Location -AllowedRegion @($obj.Location) -Tag (ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n")) )
+                    $labPlan = New-AzLabServicesLabPlan -ResourceGroupName $obj.ResourceGroupName -Name $obj.LabPlanName -Location $obj.Location -AllowedRegion @($obj.Location) -Tag $taghash
                 }
 
                 Write-Host "Completed creation of $($obj.LabPlanName), total duration $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
@@ -442,7 +502,7 @@ function New-AzLabsBulk {
 
                     # Try to get shared image and then gallery image
                     Write-Host "Image Name: $($obj.ImageName)"
-                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {$_.DisplayName -eq $obj.ImageName} | Where-Object { $_.EnabledState.ToString() -eq "Enabled"}
+                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {($_.DisplayName -like "*$($obj.ImageName)*") -and ($_.EnabledState.ToString() -eq "Enabled")}
                     if (-not $img) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }
                     if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image. $(@($img).Count.ToString())" }
 
@@ -505,12 +565,28 @@ function New-AzLabsBulk {
                         $ImageInformation.Add("ImageReferenceSku",$img.Sku)
                         $ImageInformation.Add("ImageReferenceVersion",$img.Version)
                     }
+
+                    # If the lab plan has a subnet, we should use it in the create lab request
+                    if ($plan -and $plan.DefaultNetworkProfileSubnetId) {
+                        $subnetParameters = @{
+                            NetworkProfileSubnetId = $plan.DefaultNetworkProfileSubnetId
+                        }
+                    }
+                    else {
+                        $subnetParameters = @{
+                        }
+                    }
                     
-                    #$hashTags = @{}
-                    #$tempTags = $obj.Tags -split ";"
-                    #$tempTags | ForEach-Object { $hashTags.Add("Tag$($tempTags.IndexOf($_))", $_)}
-                    $hashTags = ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n")) 
-                    
+                    if ((Get-Member -InputObject $obj -Name 'Tags') -and ($obj.Tags)) {
+                        $hashTags = @{
+                            Tag = ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n"))
+                        }
+                    }
+                    else {
+                        $hashTags = @{
+                        }
+                    }
+
                     $NewLabParameters = @{
                         Name = $obj.LabName;
                         ResourceGroupName = $obj.ResourceGroupName;
@@ -529,12 +605,17 @@ function New-AzLabsBulk {
                         VirtualMachineProfileCreateOption = $obj.TemplateVmState;
                         VirtualMachineProfileUsageQuota = $(New-TimeSpan -Hours $obj.UsageQuota).ToString();
                         VirtualMachineProfileUseSharedPassword = $obj.SharedPassword;
-                        Tag = $hashTags;
-
                     }
-                    
-                    $FullParameterList = $NewLabParameters + $idleGracePeriodParameters + $enableDisconnectOnIdleParameters + $idleNoConnectGracePeriodParameters + $ConnectionProfile + $ImageInformation
-                    
+
+                    $FullParameterList = $NewLabParameters + `
+                                         $idleGracePeriodParameters + `
+                                         $enableDisconnectOnIdleParameters + `
+                                         $idleNoConnectGracePeriodParameters + `
+                                         $ConnectionProfile + `
+                                         $ImageInformation + `
+                                         $hashTags + `
+                                         $subnetParameters
+
                     Write-Host "Starting lab creation $($obj.LabName)"
 
                     try {
