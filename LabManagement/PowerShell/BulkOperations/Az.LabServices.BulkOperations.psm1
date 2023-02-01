@@ -22,50 +22,26 @@ function Validate-SkuName {
         [string] $Sku
         )
 
-    #Azure Labs currently is case sensitive for matching the VM size, 
-    #For example, converts CLASSIC_FSV2_2_4GB_128_S_SSD to Classic_Fsv2_2_4GB_128_S_SSD
+    # We look up the correct size from the API, this way user can give us size or name
+    $subscriptionId = (Get-AzContext).Subscription.Id
+    $allSkus = (Invoke-AzRestMethod -Uri https://management.azure.com/subscriptions/$subscriptionId/providers/Microsoft.LabServices/skus?api-version=2022-08-01 | Select-Object -Property "Content" -ExpandProperty Content | ConvertFrom-Json).value
 
-    $sizeValues = ($Sku.Split('_')).Trim()
-    if ($sizeValues.Count -lt 3) {
-        Write-Error "The size provided, '$size', is not allowed.  Please see https://github.com/Azure/LabServices/blob/main/LabManagement/PowerShell/BulkOperations for valid sizes"
-    }
+    # We need to match against the "name" field - this matches things like:
+    #    "Basic" and "Fsv2_2_4GB_128_S_SSD"
+    $size = $allSKus | Where-Object {$_.name -ieq $Sku} | Select-Object -First 1
 
-    # Title casing for first segment
-    $sizeValues[0] = (Get-Culture).TextInfo.ToTitleCase($sizeValues[0].toLower())
-
-    # Second segment must have this casing to match what Labs expects
-    if ($sizeValues[1] -ieq "Fsv2") {
-        $sizeValues[1] = "Fsv2"
-    }
-    elseif ($sizeValues[1] -ieq "Dsv4") {
-        $sizeValues[1] = "Dsv4"
-    }
-    elseif ($sizeValues[1] -ieq "NCsv3") {
-        $sizeValues[1] = "NCsv3"
-    }
-    elseif ($sizeValues[1] -ieq "NVv3") {
-        $sizeValues[1] = "NVv3"
-    }
-    elseif ($sizeValues[1] -ieq "NVv4") {
-        $sizeValues[1] = "NVv4"
-    }
-    elseif ($sizeValues[1] -ieq "Esv4") {
-        $sizeValues[1] = "Esv4"
-    }
-    elseif ($sizeValues[1] -ieq "NCv3T4") {
-        $sizeValues[1] = "NCv3T4"
+    if ($size) {
+        # If we have a 'classic' size, we need to format slightly differently
+        if ($size.tier -ieq "Classic") {
+            return "$($size.tier)_$($size.size)"
+        }
+        else {
+            return $size.name
+        }
     }
     else {
-        Write-Error "Size not currently available in Azure Lab Services"
+        Write-Error "Size '$Sku' not currently available in Azure Lab Services"
     }
-
-    # The rest of the segments must be upper case
-    for ($i = 2; $i -lt $sizeValues.Count; $i++) {
-        $sizeValues[$i] = $sizeValues[$i].ToUpper()
-    }
-
-    # Return the updated string
-    return ($sizeValues -join "_")
 }
 
 function Import-LabsCsv {
@@ -526,7 +502,7 @@ function New-AzLabsBulk {
 
                     # Try to get shared image and then gallery image
                     Write-Host "Image Name: $($obj.ImageName)"
-                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {$_.DisplayName -eq $obj.ImageName} | Where-Object { $_.EnabledState.ToString() -eq "Enabled"}
+                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {($_.DisplayName -like "*$($obj.ImageName)*") -and ($_.EnabledState.ToString() -eq "Enabled")}
                     if (-not $img) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }
                     if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image. $(@($img).Count.ToString())" }
 
@@ -630,7 +606,7 @@ function New-AzLabsBulk {
                         VirtualMachineProfileUsageQuota = $(New-TimeSpan -Hours $obj.UsageQuota).ToString();
                         VirtualMachineProfileUseSharedPassword = $obj.SharedPassword;
                     }
-                    Write-Host "Try to combine parameters"
+
                     $FullParameterList = $NewLabParameters + `
                                          $idleGracePeriodParameters + `
                                          $enableDisconnectOnIdleParameters + `
