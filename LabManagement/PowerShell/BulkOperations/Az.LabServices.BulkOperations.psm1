@@ -1438,6 +1438,181 @@ function Remove-AzLabUsersBulk {
     }
 }
 
+# This function is used to send lab invitations *after* a lab has been created\published - for example, several days\weeks later when student enrollment is finalized.
+function Send-AzLabsInvitationBulk {
+    param(
+        [parameter(Mandatory = $true, HelpMessage = "Array containing one line for each lab", ValueFromPipeline = $true)]
+        [ValidateNotNullOrEmpty()]
+        [psobject[]]
+        $labs,
+
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
+        [int]
+        $ThrottleLimit = 5
+    )
+
+    begin {
+        # This patterns aggregates all the objects in the pipeline before performing an operation
+        # i.e. executes lab creation in parallel instead of sequentially
+        # This trick is to make it work both when the argument is passed as pipeline and as normal arg.
+        # I came up with this. Maybe there is a better way.
+        $aggregateLabs = @()
+    }
+    process {
+        # If passed through pipeline, $labs is a single object, otherwise it is the whole array
+        # It works because PS uses '+' to add objects or arrays to an array
+        $aggregateLabs += $labs
+
+    }
+    end {
+        $init = {            
+        }
+
+        function Send-AzLabsInvitation-Jobs {
+            [CmdletBinding()]
+            param(
+                [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+                [psobject[]]
+                $ConfigObject
+            )
+
+            $block = {
+                param($path)
+
+                Set-StrictMode -Version Latest
+                $ErrorActionPreference = 'Stop'
+
+                Import-Module -Name Az.LabServices
+
+                $input.movenext() | Out-Null
+            
+                $obj = $input.current[0]
+            
+                if ($obj.Invitation -and $obj.Emails) { 
+                    Write-Host "Sending invitation emails for lab: $($obj.LabName)."
+                    $lab = Get-AzLabServicesLab -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabName)
+                    if (-not $lab -or @($lab).Count -ne 1) { Write-Error "Unable to find lab $($obj.LabName)." }
+
+                    $users = Get-AzLabServicesUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName
+                    if (($users | Measure-Object).Count -eq 0) { Write-Error "The lab doesn't have any users added." }
+                
+                    foreach ($user in $users ) {
+                        if ($user.InvitationState -eq "NotSent") {
+                            Write-Verbose "Sending invitation email to user: $($user.Email)."
+                            Send-AzLabServicesUserInvite -ResourceGroupName $obj.ResourceGroupName -LabName $obj.LabName -UserName $user.name -Text $obj.Invitation | Out-Null
+                        }
+                    }
+                }
+                else {
+                    Write-Error "The invitation and\or user emails are missing for lab in the input .csv file: $($obj.LabName)."
+                }
+            }
+
+            Write-Host "Sending lab invitations to users.  This may take awhile."
+            $jobs = @()
+
+            $ConfigObject | ForEach-Object {
+            Write-Verbose "From config: $_"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+            }
+
+            return JobManager -currentJobs $jobs -ResultColumnName "SendInvitationResult" -ConfigObject $ConfigObject
+         }
+
+         Send-AzLabsInvitation-Jobs -ConfigObject $aggregateLabs 
+    }
+}
+
+# This function is used to add lab users *after* a lab has been created\published - for example, several days\weeks later when student enrollment is finalized.
+function Add-AzLabsUsersBulk {
+    param(
+        [parameter(Mandatory = $true, HelpMessage = "Array containing one line for each lab", ValueFromPipeline = $true)]
+        [ValidateNotNullOrEmpty()]
+        [psobject[]]
+        $labs,
+
+        [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
+        [int]
+        $ThrottleLimit = 5
+    )
+
+    begin {
+        # This patterns aggregates all the objects in the pipeline before performing an operation
+        # i.e. executes lab creation in parallel instead of sequentially
+        # This trick is to make it work both when the argument is passed as pipeline and as normal arg.
+        # I came up with this. Maybe there is a better way.
+        $aggregateLabs = @()
+    }
+    process {
+        # If passed through pipeline, $labs is a single object, otherwise it is the whole array
+        # It works because PS uses '+' to add objects or arrays to an array
+        $aggregateLabs += $labs
+
+    }
+    end {
+        $init = {            
+        }
+
+        function Add-AzLabsUser-Jobs {
+            [CmdletBinding()]
+            param(
+                [parameter(Mandatory = $true, ValueFromPipeline = $true)]
+                [psobject[]]
+                $ConfigObject
+            )
+
+            $block = {
+                param($path)
+
+                Set-StrictMode -Version Latest
+                $ErrorActionPreference = 'Stop'
+
+                Import-Module -Name Az.LabServices
+
+                $input.movenext() | Out-Null
+            
+                $obj = $input.current[0]
+            
+                if ($obj.Emails) { 
+                    Write-Host "Adding users for lab: $($obj.LabName)."
+                    $lab = Get-AzLabServicesLab -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabName)
+                    if (-not $lab -or @($lab).Count -ne 1) { Write-Error "Unable to find lab $($obj.LabName)." }
+
+                    foreach ($email in $obj.Emails) {  
+                        Write-Verbose "Adding user: $email."
+                        $user = $null
+                        try {
+                            $user = Get-AzLabServicesUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName | Where-Object {$_.email -ieq $email}
+                            if (!$user) {
+                                $tempGuid = New-Guid            
+                                $user = New-AzLabServicesUser -Name $tempGuid.Guid.ToString() -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName -Email $email    
+                            }
+                        } 
+                        catch {
+                            $tempGuid = New-Guid            
+                            $user = New-AzLabServicesUser -Name $tempGuid.Guid.ToString() -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName -Email $email    
+                        }
+                    }
+                }
+                else {
+                    Write-Error "The user emails are missing for lab in the input .csv file: $($obj.LabName)."
+                }
+            }
+
+            Write-Host "Adding users to lab.  This may take awhile."
+            $jobs = @()
+
+            $ConfigObject | ForEach-Object {
+            Write-Verbose "From config: $_"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+            }
+
+            return JobManager -currentJobs $jobs -ResultColumnName "AddUserResult" -ConfigObject $ConfigObject
+         }
+
+         Add-AzLabsUser-Jobs -ConfigObject $aggregateLabs 
+    }
+}
 
 function Confirm-AzLabsBulk {
     param(
@@ -1848,4 +2023,6 @@ Export-ModuleMember -Function   Import-LabsCsv,
                                 Set-LabPropertyByMenu,
                                 Select-Lab,
                                 Show-LabMenu,
-                                Export-LabsCsv
+                                Export-LabsCsv,
+                                Send-AzLabsInvitationBulk,
+                                Add-AzLabsUsersBulk
