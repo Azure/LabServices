@@ -9,6 +9,10 @@ param(
     [string] $CsvOutputFile,
 
     [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
+    [ValidateNotNullOrEmpty()]
+    [switch] $force,
+
+    [parameter(Mandatory = $false, ValueFromPipelineByPropertyName = $true)]
     [int] $ThrottleLimit = 10
 )
 
@@ -21,7 +25,7 @@ if (-not (Test-Path -Path $CsvConfigFile)) {
 }
 
 # Make sure the output file doesn't exist
-if (Test-Path -Path $CsvOutputFile) {
+if ((Test-Path -Path $CsvOutputFile) -and (-not $force.IsPresent)) {
     Write-Error "Output File cannot already exist, please choose a location to create a new output file..."
 }
 
@@ -30,11 +34,9 @@ Import-Module ../Az.LabServices.BulkOperations.psm1 -Force
 $scriptstartTime = Get-Date
 Write-Host "Executing Script to send all invitations, starting at $scriptstartTime" -ForegroundColor Green
 
-$labs = $CsvConfigFile | Import-LabsCsv
-
 $labs = $CsvConfigFile | Import-LabsCsv | Send-AzLabsInvitationBulk -ThrottleLimit $ThrottleLimit
 
-$labs | Export-Csv -Path $CsvOutputFile -NoTypeInformation
+$labs | Export-LabsCsv -CsvConfigFile $CsvOutputFile -Force:$force.IsPresent
 
 Write-Host "Completed sending lab invitations, total duration $([math]::Round(((Get-Date) - $scriptstartTime).TotalMinutes, 1)) minutes" -ForegroundColor Green
 

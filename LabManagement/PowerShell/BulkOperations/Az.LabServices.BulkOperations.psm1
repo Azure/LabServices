@@ -1495,10 +1495,12 @@ function Send-AzLabsInvitationBulk {
 
                     $users = Get-AzLabServicesUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName
                     if (($users | Measure-Object).Count -eq 0) { Write-Error "The lab doesn't have any users added." }
-
+                
                     foreach ($user in $users ) {
-                        Write-Verbose "Sending invitation email to user: $($user.Email)."
-                        Send-AzLabServicesUserInvite -ResourceGroupName $obj.ResourceGroupName -LabName $obj.LabName -UserName $user.name -Text $obj.Invitation | Out-Null
+                        if ($user.InvitationState -eq "NotSent") {
+                            Write-Verbose "Sending invitation email to user: $($user.Email)."
+                            Send-AzLabServicesUserInvite -ResourceGroupName $obj.ResourceGroupName -LabName $obj.LabName -UserName $user.name -Text $obj.Invitation | Out-Null
+                        }
                     }
                 }
                 else {
@@ -1514,7 +1516,7 @@ function Send-AzLabsInvitationBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs -ResultColumnName "PublishResult" -ConfigObject $ConfigObject
+            return JobManager -currentJobs $jobs -ResultColumnName "SendInvitationResult" -ConfigObject $ConfigObject
          }
 
          Send-AzLabsInvitation-Jobs -ConfigObject $aggregateLabs 
@@ -1574,6 +1576,7 @@ function Add-AzLabsUsersBulk {
                 if ($obj.Emails) { 
                     Write-Host "Adding users for lab: $($obj.LabName)."
                     $lab = Get-AzLabServicesLab -ResourceGroupName $obj.ResourceGroupName -Name $($obj.LabName)
+                    if (-not $lab -or @($lab).Count -ne 1) { Write-Error "Unable to find lab $($obj.LabName)." }
 
                     foreach ($email in $obj.Emails) {  
                         Write-Verbose "Adding user: $email."
@@ -1604,7 +1607,7 @@ function Add-AzLabsUsersBulk {
                 $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
             }
 
-            return JobManager -currentJobs $jobs -ResultColumnName "PublishResult" -ConfigObject $ConfigObject
+            return JobManager -currentJobs $jobs -ResultColumnName "AddUserResult" -ConfigObject $ConfigObject
          }
 
          Add-AzLabsUser-Jobs -ConfigObject $aggregateLabs 
