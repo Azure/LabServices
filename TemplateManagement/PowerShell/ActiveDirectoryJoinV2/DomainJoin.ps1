@@ -70,12 +70,12 @@ try {
         $LabPrefix = Get-Secret -Name LabId -AsPlainText
 
         # Generate a new unique name for this computer
-        $newComputerName = $computerName -replace("lab0",$LabPrefix)
+        $newComputerName = $LabPrefix + "_$(Get-Random)"
         
         Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to '$newComputerName'"
         Rename-Computer -ComputerName $env:COMPUTERNAME -NewName $newComputerName -Force
         Write-LogFile "Local Computer name succesfully changed to '$newComputerName' -- Restarting VM"
-        
+        # This restart may be delayed if we use -NewName $newComputerName in the Add-Computer for domain join.
         Restart-Computer -Force
     }
 

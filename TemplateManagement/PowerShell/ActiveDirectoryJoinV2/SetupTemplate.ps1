@@ -71,7 +71,9 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domai
 # Setup task scheduler
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File DomainJoin.ps1" -WorkingDirectory "C:\Users\Public\Documents"
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId 'Redmond\rbest' -RunLevel Highest
+$principal = New-ScheduledTaskPrincipal -UserId "$($env:USERNAME)\$($env:USERDOMAIN)" -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
-$task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Test Schedule A"
-Register-ScheduledTask T1 -InputObject $task
+$task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
+Register-ScheduledTask DomainJoinTask -InputObject $task
+
+# TODO edit the task in the scheduler and add the password interactively.
