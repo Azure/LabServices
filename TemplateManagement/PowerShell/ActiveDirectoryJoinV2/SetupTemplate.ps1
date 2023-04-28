@@ -24,12 +24,11 @@ Import-Module Microsoft.PowerShell.SecretStore
 $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
 
 # if password file exists try to login with that
-if ($true) {
-$pass = Read-Host -AsSecureString -Prompt 'Enter the extension vault password'
-# Uses the DPAPI to encrypt the password
-$pass | Export-CliXml $passwordPath 
-
-$pass = Import-CliXml $passwordPath
+if (!(Test-Path $passwordPath)) {
+    $pass = Read-Host -AsSecureString -Prompt 'Enter the extension vault password'
+    # Uses the DPAPI to encrypt the password
+    $pass | Export-CliXml $passwordPath 
+    $pass = Import-CliXml $passwordPath
  
 }
 
@@ -63,5 +62,16 @@ Set-Secret -Name DomainServiceAddr -Secret $djAddress
 $aadGroupName = Read-Host -AsSecureString -Prompt 'Enter AAD Group name.'
 Set-Secret -Name AADGroupName -Secret $aadGroupName
 
+$labId = Read-Host -AsSecureString -Prompt 'Enter 7 char lab id.'
+Set-Secret -Name LabId -Secret $labId
+
 # Copy down files into the Public documents folder
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/DomainJoin.ps1 -OutFile C:\Users\Public\Documents\DomainJoin.ps1
+
 # Setup task scheduler
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File DomainJoin.ps1" -WorkingDirectory "C:\Users\Public\Documents"
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId 'Redmond\rbest' -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
+$task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Test Schedule A"
+Register-ScheduledTask T1 -InputObject $task
