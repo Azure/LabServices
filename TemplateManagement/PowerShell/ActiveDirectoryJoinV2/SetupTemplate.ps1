@@ -14,8 +14,8 @@ param()
 
 ###################################################################################################
 
-#Install-Module Microsoft.PowerShell.SecretManagement
-#Install-Module Microsoft.PowerShell.SecretStore
+Install-Module Microsoft.PowerShell.SecretManagement
+Install-Module Microsoft.PowerShell.SecretStore
 
 Import-Module Microsoft.PowerShell.SecretManagement
 Import-Module Microsoft.PowerShell.SecretStore
@@ -28,14 +28,14 @@ if (!(Test-Path $passwordPath)) {
     $pass = Read-Host -AsSecureString -Prompt 'Enter the extension vault password'
     # Uses the DPAPI to encrypt the password
     $pass | Export-CliXml $passwordPath 
-    $pass = Import-CliXml $passwordPath
- 
+     
 }
 
+$pass = Import-CliXml $passwordPath
 # Check if store configuration exists
 $gssc = Get-SecretStoreConfiguration
 
-if ($gssc) {
+if (!$gssc) {
 
     # if not create one
     Set-SecretStoreConfiguration -Scope CurrentUser -Authentication Password -PasswordTimeout (60*60) -Interaction None -Password $pass -Confirm:$false
@@ -56,8 +56,8 @@ Set-Secret -Name DomainJoinPassword -Secret $djPass
 $djName = Read-Host -AsSecureString -Prompt 'Enter domain join.'
 Set-Secret -Name DomainName -Secret $djName
 
-$djAddress = Read-Host -AsSecureString -Prompt 'Enter domain service address.'
-Set-Secret -Name DomainServiceAddr -Secret $djAddress
+#$djAddress = Read-Host -AsSecureString -Prompt 'Enter domain service address.'
+#Set-Secret -Name DomainServiceAddr -Secret $djAddress
 
 $aadGroupName = Read-Host -AsSecureString -Prompt 'Enter AAD Group name.'
 Set-Secret -Name AADGroupName -Secret $aadGroupName
@@ -68,12 +68,15 @@ Set-Secret -Name LabId -Secret $labId
 # Copy down files into the Public documents folder
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/DomainJoin.ps1 -OutFile C:\Users\Public\Documents\DomainJoin.ps1
 
-# Setup task scheduler
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File DomainJoin.ps1" -WorkingDirectory "C:\Users\Public\Documents"
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "$($env:USERNAME)\$($env:USERDOMAIN)" -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
-$task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
-Register-ScheduledTask DomainJoinTask -InputObject $task
+$testTask = Get-ScheduledTask -TaskName DomainJoinTask
 
+if (!$testTask) {
+    # Setup task scheduler
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File DomainJoin.ps1" -WorkingDirectory "C:\Users\Public\Documents"
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
+    $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
+    Register-ScheduledTask DomainJoinTask -InputObject $task
+}
 # TODO edit the task in the scheduler and add the password interactively.
