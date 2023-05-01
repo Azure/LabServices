@@ -20,6 +20,17 @@ Install-Module Microsoft.PowerShell.SecretStore
 Import-Module Microsoft.PowerShell.SecretManagement
 Import-Module Microsoft.PowerShell.SecretStore
 
+# This should only be run on the template vm
+$computerName = (Get-WmiObject Win32_ComputerSystem).Name
+Write-LogFile "Check VM name section."
+if (!($computerName.StartsWith('lab000'))) {
+    
+    Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to 'lab000001'"
+    Rename-Computer -ComputerName $env:COMPUTERNAME -NewName "lab000001" -Force
+    Write-LogFile "Local Computer name will be changed to 'lab000001' -- after restarting the vm."
+    Restart-Computer -Force    
+}
+
 # Password path
 $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
 

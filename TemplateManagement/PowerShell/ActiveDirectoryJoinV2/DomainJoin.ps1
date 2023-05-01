@@ -64,6 +64,7 @@ try {
     # Check if vm renamed 
     $computerName = (Get-WmiObject Win32_ComputerSystem).Name
     Write-LogFile "Rename VM section."
+    $requireRename = $false
     if ($computerName.StartsWith('lab000')) {
         
         # Get lab id
@@ -75,6 +76,7 @@ try {
         Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to '$newComputerName'"
         Rename-Computer -ComputerName $env:COMPUTERNAME -NewName $newComputerName -Force
         Write-LogFile "Local Computer name will be changed to '$newComputerName' -- after restarting the vm."
+        $requireRename = $true
         
     }
 
@@ -96,7 +98,11 @@ try {
         })
         # Domain join the current VM
         Write-LogFile "Joining computer '$env:COMPUTERNAME' to domain '$Domain'"
-        Add-Computer -DomainName $Domain -ComputerName $computerName -Credential $domainCredential -Force -NewName $newComputerName
+        if ($requireRename){
+            Add-Computer -DomainName $Domain -ComputerName $computerName -Credential $domainCredential -Force -NewName $newComputerName
+        } else {
+            Add-Computer -DomainName $Domain -ComputerName $computerName -Credential $domainCredential -Force
+        }
         Write-LogFile "This VM has successfully been joined to the AD domain '$Domain'"
     
     }
