@@ -70,13 +70,13 @@ try {
         $LabPrefix = Get-Secret -Name LabId -AsPlainText
 
         # Generate a new unique name for this computer
-        $newComputerName = $LabPrefix + "_$(Get-Random)"
+        $newComputerName = $($LabPrefix + "-$(Get-Random)").Substring(0,14)
         
         Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to '$newComputerName'"
         Rename-Computer -ComputerName $env:COMPUTERNAME -NewName $newComputerName -Force
-        Write-LogFile "Local Computer name succesfully changed to '$newComputerName' -- Restarting VM"
+        #Write-LogFile "Local Computer name succesfully changed to '$newComputerName' -- Restarting VM"
         # This restart may be delayed if we use -NewName $newComputerName in the Add-Computer for domain join.
-        Restart-Computer -Force
+        #Restart-Computer -Force
     }
 
     Write-LogFile "Domain join VM section."
@@ -88,17 +88,21 @@ try {
         $djUser = Get-Secret -Name DomainJoinUser -AsPlainText
         $djPassword = Get-Secret -Name DomainJoinPassword -AsPlainText
         $Domain = Get-Secret -Name DomainName -AsPlainText
-        $DomainServiceAddress = Get-Secret -Name DomainServiceAddr -AsPlainText
+        #$DomainServiceAddress = Get-Secret -Name DomainServiceAddr -AsPlainText
 
-        Write-LogFile "Changing DNS settings"
-        $netAdapter = Get-NetAdapter -Physical
-        Set-DnsClientServerAddress -InterfaceAlias $netAdapter.Name -ServerAddresses $DomainServiceAddress
+        #Write-LogFile "Changing DNS settings"
+        #$netAdapter = Get-NetAdapter -Physical
+        #Set-DnsClientServerAddress -InterfaceAlias $netAdapter.Name -ServerAddresses $DomainServiceAddress
             
-        $domainCredential = New-Object System.Management.Automation.PSCredential ($djUser, $djPassword)
+        #$domainCredential = New-Object System.Management.Automation.PSCredential ($djUser, $djPassword)
     
+        $domainCredential = New-Object pscredential -ArgumentList ([pscustomobject]@{
+            UserName = $djUser
+            Password = (ConvertTo-SecureString -String $djPassword -AsPlainText -Force)[0]
+        })
         # Domain join the current VM
         Write-LogFile "Joining computer '$env:COMPUTERNAME' to domain '$Domain'"
-        Add-Computer -DomainName $Domain -Credential $domainCredential -Force
+        Add-Computer -DomainName $Domain -ComputerName $computerName -Credential $domainCredential -Force -NewName $newComputerName
         Write-LogFile "This VM has successfully been joined to the AD domain '$Domain'"
     
     }
@@ -113,8 +117,9 @@ try {
     if ((!$user) -and (Get-ADJoinState -eq "YES")) {
         Write-LogFile "Adding $aadGroup to $localGroup"
         Add-LocalGroupMember -Group $localGroup -Member $aadGroup
-
+        #Restart-Computer -Force
     }
+
 
     $aadUser = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
 
