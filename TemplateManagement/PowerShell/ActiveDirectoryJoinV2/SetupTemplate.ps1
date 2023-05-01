@@ -56,9 +56,6 @@ Set-Secret -Name DomainJoinPassword -Secret $djPass
 $djName = Read-Host -AsSecureString -Prompt 'Enter domain join.'
 Set-Secret -Name DomainName -Secret $djName
 
-#$djAddress = Read-Host -AsSecureString -Prompt 'Enter domain service address.'
-#Set-Secret -Name DomainServiceAddr -Secret $djAddress
-
 $aadGroupName = Read-Host -AsSecureString -Prompt 'Enter AAD Group name.'
 Set-Secret -Name AADGroupName -Secret $aadGroupName
 
@@ -79,4 +76,5 @@ if (!$testTask) {
     $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
     Register-ScheduledTask DomainJoinTask -InputObject $task
 }
+Read-Host -Prompt 'Update the scheduled task to add the user password.'
 # TODO edit the task in the scheduler and add the password interactively.

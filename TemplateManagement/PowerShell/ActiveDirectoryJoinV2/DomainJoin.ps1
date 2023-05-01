@@ -74,9 +74,8 @@ try {
         
         Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to '$newComputerName'"
         Rename-Computer -ComputerName $env:COMPUTERNAME -NewName $newComputerName -Force
-        #Write-LogFile "Local Computer name succesfully changed to '$newComputerName' -- Restarting VM"
-        # This restart may be delayed if we use -NewName $newComputerName in the Add-Computer for domain join.
-        #Restart-Computer -Force
+        Write-LogFile "Local Computer name will be changed to '$newComputerName' -- after restarting the vm."
+        
     }
 
     Write-LogFile "Domain join VM section."
@@ -88,16 +87,11 @@ try {
         $djUser = Get-Secret -Name DomainJoinUser -AsPlainText
         $djPassword = Get-Secret -Name DomainJoinPassword -AsPlainText
         $Domain = Get-Secret -Name DomainName -AsPlainText
-        #$DomainServiceAddress = Get-Secret -Name DomainServiceAddr -AsPlainText
 
-        #Write-LogFile "Changing DNS settings"
-        #$netAdapter = Get-NetAdapter -Physical
-        #Set-DnsClientServerAddress -InterfaceAlias $netAdapter.Name -ServerAddresses $DomainServiceAddress
-            
-        #$domainCredential = New-Object System.Management.Automation.PSCredential ($djUser, $djPassword)
+        Write-LogFile "Generating credentials"
     
         $domainCredential = New-Object pscredential -ArgumentList ([pscustomobject]@{
-            UserName = $djUser
+            UserName = $djUser.ToString()
             Password = (ConvertTo-SecureString -String $djPassword -AsPlainText -Force)[0]
         })
         # Domain join the current VM
@@ -117,7 +111,7 @@ try {
     if ((!$user) -and (Get-ADJoinState -eq "YES")) {
         Write-LogFile "Adding $aadGroup to $localGroup"
         Add-LocalGroupMember -Group $localGroup -Member $aadGroup
-        #Restart-Computer -Force
+        Restart-Computer -Force
     }
 
 
