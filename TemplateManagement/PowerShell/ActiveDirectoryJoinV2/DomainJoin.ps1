@@ -83,7 +83,8 @@ try {
     Write-LogFile "Domain join VM section."
 
     # Check if the device has been (Hybrid) Azure AD Joined
-    if (Get-ADJoinState -ine "YES") {
+    $testDom = (Get-WmiObject Win32_ComputerSystem).Domain
+    if ((Get-ADJoinState -ine "YES") -and ($testDom -ine $Domain.ToString())) {
 
         # Get secrets
         $djUser = Get-Secret -Name DomainJoinUser -AsPlainText
@@ -94,7 +95,7 @@ try {
     
         $domainCredential = New-Object pscredential -ArgumentList ([pscustomobject]@{
             UserName = $djUser.ToString()
-            Password = (ConvertTo-SecureString -String $djPassword -AsPlainText -Force)[0]
+            Password = (ConvertTo-SecureString -String $djPassword.ToString() -AsPlainText -Force)[0]
         })
         # Domain join the current VM
         Write-LogFile "Joining computer '$env:COMPUTERNAME' to domain '$Domain'"
