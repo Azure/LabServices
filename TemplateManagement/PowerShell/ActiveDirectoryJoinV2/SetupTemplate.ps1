@@ -23,7 +23,7 @@ Import-Module Microsoft.PowerShell.SecretStore
 # This should only be run on the template vm
 $computerName = (Get-WmiObject Win32_ComputerSystem).Name
 Write-LogFile "Check VM name section."
-if (!($computerName.StartsWith('lab000'))) {
+if (!($computerName -match 'lab000')) {
     
     Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to 'lab000001'"
     Rename-Computer -ComputerName $env:COMPUTERNAME -NewName "lab000001" -Force
@@ -85,7 +85,6 @@ if (!$testTask) {
     $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
     $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
-    Register-ScheduledTask DomainJoinTask -InputObject $task
+    $userPwd = Read-Host -AsSecureString -Prompt 'Enter User password to register task.'
+    Register-ScheduledTask DomainJoinTask -InputObject $task -Password $userPwd
 }
-Read-Host -Prompt 'Update the scheduled task to add the user password.'
-# TODO edit the task in the scheduler and add the password interactively.

@@ -65,7 +65,7 @@ try {
     $computerName = (Get-WmiObject Win32_ComputerSystem).Name
     Write-LogFile "Rename VM section."
     $requireRename = $false
-    if ($computerName.StartsWith('lab000')) {
+    if ($computerName -match 'lab000') {
         
         # Get lab id
         $LabPrefix = Get-Secret -Name LabId -AsPlainText
