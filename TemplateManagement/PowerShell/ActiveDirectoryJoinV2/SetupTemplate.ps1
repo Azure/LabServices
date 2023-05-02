@@ -9,16 +9,36 @@ This script is part of the scripts chain for joining a student VM to an Active D
 .LINK https://docs.microsoft.com/en-us/azure/lab-services/classroom-labs/how-to-connect-peer-virtual-network
 #>
 
+
 [CmdletBinding()]
 param()
 
 ###################################################################################################
+
+function Write-LogFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Message
+    )
+ 
+    # Get the current date
+    $TimeStamp = Get-Date -Format o
+
+    # Add Content to the Log File
+    $Line = "$TimeStamp - $Message"
+    Add-content -Path $Logfile -Value $Line -ErrorAction SilentlyContinue
+    Write-Output $Line
+}
+
 
 Install-Module Microsoft.PowerShell.SecretManagement
 Install-Module Microsoft.PowerShell.SecretStore
 
 Import-Module Microsoft.PowerShell.SecretManagement
 Import-Module Microsoft.PowerShell.SecretStore
+
+$LogFile = Join-Path $($env:Userprofile) "DJLog$(Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }).txt"
+New-Item -Path $logFile -ItemType File
 
 # This should only be run on the template vm
 $computerName = (Get-WmiObject Win32_ComputerSystem).Name
