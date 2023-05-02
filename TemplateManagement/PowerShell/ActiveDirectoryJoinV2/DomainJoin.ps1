@@ -83,13 +83,14 @@ try {
     Write-LogFile "Domain join VM section."
 
     # Check if the device has been (Hybrid) Azure AD Joined
+    $Domain = Get-Secret -Name DomainName -AsPlainText
     $testDom = (Get-WmiObject Win32_ComputerSystem).Domain
     if ((Get-ADJoinState -ine "YES") -and ($testDom -ine $Domain.ToString())) {
 
         # Get secrets
         $djUser = Get-Secret -Name DomainJoinUser -AsPlainText
         $djPassword = Get-Secret -Name DomainJoinPassword -AsPlainText
-        $Domain = Get-Secret -Name DomainName -AsPlainText
+
 
         Write-LogFile "Generating credentials"
     
