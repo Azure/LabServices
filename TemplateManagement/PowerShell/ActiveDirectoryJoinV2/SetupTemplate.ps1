@@ -56,7 +56,7 @@ $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
 
 # if password file exists try to login with that
 if (!(Test-Path $passwordPath)) {
-    $pass = Read-Host -AsSecureString -Prompt 'Enter the extension vault password'
+    $pass = Read-Host -AsSecureString -Prompt 'Enter the secretstore vault password'
     # Uses the DPAPI to encrypt the password
     $pass | Export-CliXml $passwordPath 
      
@@ -78,33 +78,36 @@ if (!$gssc) {
 Unlock-SecretStore -Password $pass
 
 # Set Secrets
-$djUser = Read-Host -AsSecureString -Prompt 'Enter user to domain join.'
+$djUser = Read-Host -AsSecureString -Prompt 'Enter user name to domain join (ie .\admin).'
 Set-Secret -Name DomainJoinUser -Secret $djUser
 
 $djPass = Read-Host -AsSecureString -Prompt 'Enter password to domain join.'
 Set-Secret -Name DomainJoinPassword -Secret $djPass
 
-$djName = Read-Host -AsSecureString -Prompt 'Enter domain join.'
+$djName = Read-Host -AsSecureString -Prompt 'Enter the domain join. (ie contoso.com)'
 Set-Secret -Name DomainName -Secret $djName
 
-$aadGroupName = Read-Host -AsSecureString -Prompt 'Enter AAD Group name.'
+$aadGroupName = Read-Host -AsSecureString -Prompt 'Enter the Lab AAD Group name.'
 Set-Secret -Name AADGroupName -Secret $aadGroupName
 
-$labId = Read-Host -AsSecureString -Prompt 'Enter 7 char lab id.'
+$labId = Read-Host -AsSecureString -Prompt 'Enter 5 character lab id prefix. (ie Alpha)'
 Set-Secret -Name LabId -Secret $labId
 
 # Copy down files into the Public documents folder
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/DomainJoin.ps1 -OutFile C:\Users\Public\Documents\DomainJoin.ps1
 
-$testTask = Get-ScheduledTask -TaskName DomainJoinTask
+$testTask = Get-ScheduledTask -TaskName DomainJoinTask -ErrorAction SilentlyContinue
 
 if (!$testTask) {
     # Setup task scheduler
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File DomainJoin.ps1" -WorkingDirectory "C:\Users\Public\Documents"
     $trigger = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest -LogonType Password
     $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
     $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
-    $userPwd = Read-Host -AsSecureString -Prompt 'Enter User password to register task.'
-    Register-ScheduledTask DomainJoinTask -InputObject $task -Password $userPwd
+    $SecurePassword = Read-Host -Prompt 'Enter user password to register task' -AsSecureString
+    $UserName = "$env:USERNAME"
+    $Credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
+    $Password = $Credentials.GetNetworkCredential().Password 
+    Register-ScheduledTask DomainJoinTask -InputObject $task -Password $Password -User "$env:USERNAME" -Force
 }
