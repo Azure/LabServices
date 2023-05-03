@@ -41,15 +41,17 @@ $LogFile = Join-Path $($env:Userprofile) "DJLog$(Get-Date -Format o | ForEach-Ob
 New-Item -Path $logFile -ItemType File
 
 # This should only be run on the template vm
-$computerName = (Get-WmiObject Win32_ComputerSystem).Name
-Write-LogFile "Check VM name section."
-if (!($computerName -match 'lab000')) {
+# $computerName = (Get-WmiObject Win32_ComputerSystem).Name
+# Write-LogFile "Check VM name section."
+# if (!($computerName -match 'lab000')) {
     
-    Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to 'lab000001'"
-    Rename-Computer -ComputerName $env:COMPUTERNAME -NewName "lab000001" -Force
-    Write-LogFile "Local Computer name will be changed to 'lab000001' -- after restarting the vm."
-    Restart-Computer -Force    
-}
+#     Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to 'lab000001'"
+#     Rename-Computer -ComputerName $env:COMPUTERNAME -NewName "lab000001" -Force
+#     Write-LogFile "Local Computer name will be changed to 'lab000001' -- after restarting the vm."
+#     Restart-Computer -Force    
+# }
+
+$ip
 
 # Password path
 $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
@@ -92,6 +94,8 @@ Set-Secret -Name AADGroupName -Secret $aadGroupName
 
 $labId = Read-Host -AsSecureString -Prompt 'Enter 5 character lab id prefix. (ie Alpha)'
 Set-Secret -Name LabId -Secret $labId
+
+Set-Secret -Name TemplateIP -Secret $((Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin DHCP).IPAddress)
 
 # Copy down files into the Public documents folder
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/DomainJoin.ps1 -OutFile C:\Users\Public\Documents\DomainJoin.ps1

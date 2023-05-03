@@ -61,6 +61,12 @@ try {
     $pass = Import-CliXml $passwordPath
     Unlock-SecretStore -Password $pass
 
+    # Check IP address for template
+    $currentIp = $((Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin DHCP).IPAddress)
+    if ($currentIp -ieq $(Get-Secret -Name TemplateIP -AsPlainText)){
+        exit
+    }
+
     # Check if vm renamed 
     $computerName = (Get-WmiObject Win32_ComputerSystem).Name
     Write-LogFile "Rename VM section."
@@ -109,26 +115,27 @@ try {
     
     }
 
-    Write-LogFile "Add Group section."
-    # Add group to Remote Desktop
-    $aadGroup = Get-Secret -Name AADGroupName -AsPlainText
-    $localGroup = "Remote Desktop Users"
+    # Write-LogFile "Add Group section."
+    # # Add group to Remote Desktop
+    # $aadGroup = Get-Secret -Name AADGroupName -AsPlainText
+    # $localGroup = "Remote Desktop Users"
 
-    $user = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
+    # $user = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
 
-    if ((!$user) -and (Get-ADJoinState -eq "YES")) {
-        Write-LogFile "Adding $aadGroup to $localGroup"
-        Add-LocalGroupMember -Group $localGroup -Member $aadGroup
-        Restart-Computer -Force
-    }
+    # if ((!$user) -and (Get-ADJoinState -eq "YES")) {
+    #     Write-LogFile "Adding $aadGroup to $localGroup"
+    #     Add-LocalGroupMember -Group $localGroup -Member $aadGroup
+    #     Restart-Computer -Force
+    # }
 
 
-    $aadUser = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
+    #$aadUser = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
 
     # Clean up delete pass file
     Write-LogFile "Clean up section."
-    if (($aadUser) -and (Get-ADJoinState -eq "YES")) {
+    if (((Get-WmiObject Win32_ComputerSystem).Domain) -ieq $Domain.toString()) {
         Remove-Item -Path $passwordPath -Force
+        Restart-Computer -Force
     }    
 
 }
