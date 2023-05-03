@@ -51,7 +51,6 @@ New-Item -Path $logFile -ItemType File
 #     Restart-Computer -Force    
 # }
 
-$ip
 
 # Password path
 $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
