@@ -31,26 +31,11 @@ function Write-LogFile {
 }
 
 
-Install-Module Microsoft.PowerShell.SecretManagement
-Install-Module Microsoft.PowerShell.SecretStore
-
 Import-Module Microsoft.PowerShell.SecretManagement
 Import-Module Microsoft.PowerShell.SecretStore
 
 $LogFile = Join-Path $($env:Userprofile) "DJLog$(Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }).txt"
 New-Item -Path $logFile -ItemType File
-
-# This should only be run on the template vm
-# $computerName = (Get-WmiObject Win32_ComputerSystem).Name
-# Write-LogFile "Check VM name section."
-# if (!($computerName -match 'lab000')) {
-    
-#     Write-LogFile "Renaming the computer '$env:COMPUTERNAME' to 'lab000001'"
-#     Rename-Computer -ComputerName $env:COMPUTERNAME -NewName "lab000001" -Force
-#     Write-LogFile "Local Computer name will be changed to 'lab000001' -- after restarting the vm."
-#     Restart-Computer -Force    
-# }
-
 
 # Password path
 $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
@@ -97,6 +82,7 @@ Set-Secret -Name LabId -Secret $labId
 Set-Secret -Name TemplateIP -Secret $((Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin DHCP).IPAddress)
 
 # Copy down files into the Public documents folder
+# TODO set the correct final location
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/DomainJoin.ps1 -OutFile C:\Users\Public\Documents\DomainJoin.ps1
 
 $testTask = Get-ScheduledTask -TaskName DomainJoinTask -ErrorAction SilentlyContinue
@@ -108,7 +94,7 @@ if (!$testTask) {
     $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest -LogonType Password
     $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
     $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
-    $SecurePassword = Read-Host -Prompt 'Enter user password to register task' -AsSecureString
+    $SecurePassword = Read-Host -Prompt 'Enter user password to register the task' -AsSecureString
     $UserName = "$env:USERNAME"
     $Credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
     $Password = $Credentials.GetNetworkCredential().Password 

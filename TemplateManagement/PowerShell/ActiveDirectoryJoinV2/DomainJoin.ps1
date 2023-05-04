@@ -48,7 +48,6 @@ try {
 
     $ErrorActionPreference = "Stop"
 
-    #Import-Module Az.LabServices -Force
     Import-Module Microsoft.PowerShell.SecretManagement
     Import-Module Microsoft.PowerShell.SecretStore
    
@@ -64,6 +63,7 @@ try {
     # Check IP address for template
     $currentIp = $((Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin DHCP).IPAddress)
     if ($currentIp -ieq $(Get-Secret -Name TemplateIP -AsPlainText)){
+        Write-LogFile "Template VM IP, exitting."
         exit
     }
 
@@ -106,6 +106,7 @@ try {
         })
         # Domain join the current VM
         Write-LogFile "Joining computer '$env:COMPUTERNAME' to domain '$Domain'"
+        # If the $requireRename is true then the vm has not been rebooted after rename
         if ($requireRename){
             Add-Computer -DomainName $Domain -ComputerName $computerName -Credential $domainCredential -Force -NewName $newComputerName
         } else {
@@ -115,28 +116,21 @@ try {
     
     }
 
-    # Write-LogFile "Add Group section."
-    # # Add group to Remote Desktop
-    # $aadGroup = Get-Secret -Name AADGroupName -AsPlainText
-    # $localGroup = "Remote Desktop Users"
+    Write-LogFile "Add Group section."
+    # Add group to Remote Desktop
+    $aadGroup = Get-Secret -Name AADGroupName -AsPlainText
+    $localGroup = "Remote Desktop Users"
 
-    # $user = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
+    $user = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
 
-    # if ((!$user) -and (Get-ADJoinState -eq "YES")) {
-    #     Write-LogFile "Adding $aadGroup to $localGroup"
-    #     Add-LocalGroupMember -Group $localGroup -Member $aadGroup
-    #     Restart-Computer -Force
-    # }
-
-
-    #$aadUser = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
-
-    # Clean up delete pass file
-    Write-LogFile "Clean up section."
-    if (((Get-WmiObject Win32_ComputerSystem).Domain) -ieq $Domain.toString()) {
+    if ((!$user) -and (((Get-WmiObject Win32_ComputerSystem).Domain) -ieq $Domain.toString())) {
+        Write-LogFile "Adding $aadGroup to $localGroup"
+        Add-LocalGroupMember -Group $localGroup -Member $aadGroup
+        Write-LogFile "Clean up section."
         Remove-Item -Path $passwordPath -Force
+        Write-LogFile "Restarting vm"
         Restart-Computer -Force
-    }    
+     }
 
 }
 catch
