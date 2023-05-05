@@ -50,6 +50,8 @@ The instructions above use the labs default administrator.  If you want to have 
     - View the proper domain name in the UI.
     - Open command window and use dsregcmd.  Additional troubleshooting tips using this tool. https://learn.microsoft.com/en-us/azure/active-directory/devices/troubleshoot-device-dsregcmd
 
+- If the password file / domain join scripts have been removed. You can reset the student VM or copy those files from the template VM.  If you are using scheduled tasks I would disable the task in the template VM and reset the student VM to manually debug.
+
 # Rename student VMs to unique names
 ## How to setup the template VM
 ### Information you'll need
