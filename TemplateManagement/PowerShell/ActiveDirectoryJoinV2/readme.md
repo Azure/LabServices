@@ -7,6 +7,7 @@
 - Lab name prefix, the vms will need unique names and this will help identify the lab the vms are in.
 - A secret store password.  This will need to be different than the user password or the domain user password.
 - Azure Active Directory group name for the lab.
+### Prerequisites (TODO)
 ### How to setup the lab template.
 - Start template VM and connect using the administor.
 - Before setting up the Domain joining scripts make sure that the template vm is ready.  Add or configure any software before doing this.
@@ -38,7 +39,16 @@ The script does several actions:
 - Restart the vm.
 
 ### Increase security
-The instructions above use the labs default administrator.  If you want to have additional security, instead of using the lab administrator you can add another user (Security User) and add that user as an administrator.  Login to the template using the new security user and run the SetupTemplateToDomainJoin.ps1.  This will add an additional layer to help protect any secrets.
+The instructions above use the labs default administrator.  If you want to have additional security, instead of using the lab administrator you can add another user (Security User) and add that user as an administrator.  Login to the template using the new security user and run the SetupTemplateToDomainJoin.ps1.  This will add an additional layer to help protect any secrets.  The students shouldn't have access to the lab administrator account.
+
+# Troubleshooting
+- The log file for the script is located in the administrator user folder.  The file will prefaced with "DJLog" followed by the date and time that the file was created.  Any error message will be logged there.
+
+- If you are having issues with the script failing when run from a scheduled task, disable the task and try running the script manually from the student vm.  
+
+- Check that the student vm is properly joined to the domain.
+    - View the proper domain name in the UI.
+    - Open command window and use dsregcmd.  Additional troubleshooting tips using this tool. https://learn.microsoft.com/en-us/azure/active-directory/devices/troubleshoot-device-dsregcmd
 
 # Rename student VMs to unique names
 ## How to setup the template VM
