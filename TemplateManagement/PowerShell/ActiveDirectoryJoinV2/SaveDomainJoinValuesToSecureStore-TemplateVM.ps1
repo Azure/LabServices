@@ -63,6 +63,19 @@ if (!$gssc) {
 
 Unlock-SecretStore -Password $pass
 
+# Set Secrets
+$djUser = Read-Host -AsSecureString -Prompt 'Enter user name to domain join (ie .\admin).'
+Set-Secret -Name DomainJoinUser -Secret $djUser
+
+$djPass = Read-Host -AsSecureString -Prompt 'Enter password to domain join.'
+Set-Secret -Name DomainJoinPassword -Secret $djPass
+
+$djName = Read-Host -AsSecureString -Prompt 'Enter the domain join. (ie contoso.com)'
+Set-Secret -Name DomainName -Secret $djName
+
+$aadGroupName = Read-Host -AsSecureString -Prompt 'Enter the Lab AAD Group name.'
+Set-Secret -Name AADGroupName -Secret $aadGroupName
+
 $labId = Read-Host -AsSecureString -Prompt 'Enter 5 character lab id prefix. (ie Alpha)'
 Set-Secret -Name LabId -Secret $labId
 
@@ -70,20 +83,21 @@ Set-Secret -Name TemplateIP -Secret $((Get-NetIPAddress -AddressFamily IPv4 -Pre
 
 # Copy down files into the Public documents folder
 # TODO set the correct final location
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/RenameVM.ps1 -OutFile C:\Users\Public\Documents\RenameVM.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/DomainJoin.ps1 -OutFile C:\Users\Public\Documents\DomainJoin.ps1
 
-$testTask = Get-ScheduledTask -TaskName RenameVMTask -ErrorAction SilentlyContinue
+# Section to automatically create scheduled task
+# $testTask = Get-ScheduledTask -TaskName DomainJoinTask -ErrorAction SilentlyContinue
 
-if (!$testTask) {
-    # Setup task scheduler
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File RenameVM.ps1" -WorkingDirectory "C:\Users\Public\Documents"
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest -LogonType Password
-    $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
-    $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Rename VM task for Lab Service VM"
-    $SecurePassword = Read-Host -Prompt 'Enter user password to register the task' -AsSecureString
-    $UserName = "$env:USERNAME"
-    $Credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
-    $Password = $Credentials.GetNetworkCredential().Password 
-    Register-ScheduledTask RenameVMTask -InputObject $task -Password $Password -User "$env:USERNAME" -Force
-}
+# if (!$testTask) {
+#     # Setup task scheduler
+#     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File DomainJoin.ps1" -WorkingDirectory "C:\Users\Public\Documents"
+#     $trigger = New-ScheduledTaskTrigger -AtStartup
+#     $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest -LogonType Password
+#     $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
+#     $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
+#     $SecurePassword = Read-Host -Prompt 'Enter user password to register the task' -AsSecureString
+#     $UserName = "$env:USERNAME"
+#     $Credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
+#     $Password = $Credentials.GetNetworkCredential().Password 
+#     Register-ScheduledTask DomainJoinTask -InputObject $task -Password $Password -User "$env:USERNAME" -Force
+# }

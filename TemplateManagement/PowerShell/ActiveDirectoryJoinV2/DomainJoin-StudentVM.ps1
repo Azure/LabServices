@@ -14,6 +14,13 @@ param()
 
 ###################################################################################################
 
+function Get-AzureADJoinStatus {
+    $status = dsregcmd /status 
+    $status.Replace(":", ' ') | 
+        ForEach-Object { $_.Trim() }  | 
+        ConvertFrom-String -PropertyNames 'State', 'Status'
+} 
+
 function Write-LogFile {
     param(
         [Parameter(Mandatory = $true)]
@@ -27,6 +34,11 @@ function Write-LogFile {
     $Line = "$TimeStamp - $Message"
     Add-content -Path $Logfile -Value $Line -ErrorAction SilentlyContinue
     Write-Output $Line
+}
+
+function Get-ADJoinState {
+    $adJoinStatus = Get-AzureADJoinStatus
+    return ($adJoinStatus | Where-Object { $_.State -eq "AzureAdJoined" } | Select-Object -First 1).Status
 }
 
 # Default exit code
@@ -58,7 +70,7 @@ try {
     # Check if vm renamed 
     $computerName = (Get-WmiObject Win32_ComputerSystem).Name
     Write-LogFile "Rename VM section."
-
+    $requireRename = $false
     if ($computerName -match 'lab000') {
         
         # Get lab id
@@ -74,10 +86,56 @@ try {
         
     }
 
-    Write-LogFile "Clean up section."
-    Remove-Item -Path $passwordPath -Force
-    Write-LogFile "Restarting vm"
-    Restart-Computer -Force
+    Write-LogFile "Domain join VM section."
+
+    # Check if the device has been (Hybrid) Azure AD Joined
+    $Domain = Get-Secret -Name DomainName -AsPlainText
+    $testDom = (Get-WmiObject Win32_ComputerSystem).Domain
+    if ((Get-ADJoinState -ine "YES") -and ($testDom -ine $Domain.ToString())) {
+
+        # Get secrets
+        $djUser = Get-Secret -Name DomainJoinUser -AsPlainText
+        $djPassword = Get-Secret -Name DomainJoinPassword -AsPlainText
+
+
+        Write-LogFile "Generating credentials"
+    
+        $domainCredential = New-Object pscredential -ArgumentList ([pscustomobject]@{
+            UserName = $djUser.ToString()
+            Password = (ConvertTo-SecureString -String $djPassword.ToString() -AsPlainText -Force)[0]
+        })
+        # Domain join the current VM
+        Write-LogFile "Joining computer '$env:COMPUTERNAME' to domain '$Domain'"
+        # If the $requireRename is true then the vm has not been rebooted after rename
+        if ($requireRename){
+            Add-Computer -DomainName $Domain -ComputerName $computerName -Credential $domainCredential -Force -NewName $newComputerName
+        } else {
+            Add-Computer -DomainName $Domain -ComputerName $computerName -Credential $domainCredential -Force
+        }
+        Write-LogFile "This VM has successfully been joined to the AD domain '$Domain'"
+    
+    }
+
+    Write-LogFile "Add Group section."
+    # Add group to Remote Desktop
+    $aadGroup = Get-Secret -Name AADGroupName -AsPlainText
+    $localGroup = "Remote Desktop Users"
+
+    $user = Get-LocalGroupMember -Member $aadGroup -Group $localGroup
+
+    if ((!$user) -and (((Get-WmiObject Win32_ComputerSystem).Domain) -ieq $Domain.toString())) {
+        Write-LogFile "Adding $aadGroup to $localGroup"
+        Add-LocalGroupMember -Group $localGroup -Member $aadGroup
+     }
+
+     Write-LogFile "Clean up section."
+     Remove-Item -Path $passwordPath -Force
+     Remove-Item -Path "C:\Users\Public\Documents\DomainJoin.ps1" -Force
+     # If using task scheduler
+     # Disable-ScheduledTask -TaskName 'DomainJoinTask'
+     Write-LogFile "Restarting vm"
+     Restart-Computer -Force
+
 
 }
 catch
