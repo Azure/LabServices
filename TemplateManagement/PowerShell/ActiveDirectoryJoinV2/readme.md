@@ -7,7 +7,13 @@
 - Lab name prefix, the vms will need unique names and this will help identify the lab the vms are in.
 - A secret store password.  This will need to be different than the user password or the domain user password.
 - Azure Active Directory group name for the lab.
-### Prerequisites (TODO)
+### Prerequisites
+- Line-of-site to domain controller – The lab must have network line-of-site to your on-prem domain controller by using VNet injection. 
+
+- AAD groups – The lab must use an AAD group to manage students registered for the lab.  The DomainJoin-StudentVM.ps1 script adds the students from the AAD group to 3Remote Desktop Users on each domain joined lab VM to enable RDP connection. 
+
+NOTE: When you set up line-of-site to your domain controller, you shouldn’t change the DNS settings at the OS level on your lab VMs to point to your domain controller’s IP – this can cause ill side effects, such as losing RDP connection to your lab VMs.  Instead, you should change the DNS settings on the lab’s VNet.  
+
 ### How to setup the lab template.
 - Start template VM and connect using the administor.
 - Before setting up the Domain joining scripts make sure that the template vm is ready.  Add or configure any software before doing this.
@@ -40,6 +46,9 @@ The script does several actions:
 
 ### Increase security
 The instructions above use the labs default administrator.  If you want to have additional security, instead of using the lab administrator you can add another user (Security User) and add that user as an administrator.  Login to the template using the new security user and run the SetupTemplateToDomainJoin.ps1.  This will add an additional layer to help protect any secrets.  The students shouldn't have access to the lab administrator account.
+
+### Additional information
+When additional students are added to the class the Domain join script will need to be run on the additional machines before the students try to use them.  If you have the scheduled tasks setup, then this is not relevant.  You will need to confirm that the domain join connected properly.  If the student resets their machine the domain join will need to be run, unless scheduled to automatically run.
 
 # Troubleshooting
 - The log file for the script is located in the administrator user folder.  The file will prefaced with "DJLog" followed by the date and time that the file was created.  Any error message will be logged there.
