@@ -10,7 +10,11 @@
 ### Prerequisites
 - Line-of-site to domain controller – The lab must have network line-of-site to your on-prem domain controller by using VNet injection. 
 
-- AAD groups – The lab must use an AAD group to manage students registered for the lab.  The DomainJoin-StudentVM.ps1 script adds the students from the AAD group to 3Remote Desktop Users on each domain joined lab VM to enable RDP connection. 
+- AAD groups – The lab must use an AAD group to manage students registered for the lab.  The DomainJoin-StudentVM.ps1 script adds the students from the AAD group to Remote Desktop Users on each domain joined lab VM to enable RDP connection.
+
+- Lab creation - The lab must be created with **Use same password for all virtual machine** enabled and **Create a template virtual machine** enabled.
+
+- Template VM setup - You should install all other software/customizations *before* you set up the scripts to rename or domain join.  Also, we *don't* recommend exporting the template VM image with the scripts set up because they may cause ill-side effects (e.g., script inadvertently run on startup, errorneous values saved in the Secure Store, etc.)
 
 NOTE: When you set up line-of-site to your domain controller, you shouldn’t change the DNS settings at the OS level on your lab VMs to point to your domain controller’s IP – this can cause ill side effects, such as losing RDP connection to your lab VMs.  Instead, you should change the DNS settings on the lab’s VNet.  
 
@@ -56,10 +60,10 @@ When additional students are added to the class the Domain join script will need
 - If you are having issues with the script failing when run from a scheduled task, disable the task and try running the script manually from the student vm.  
 
 - Check that the student vm is properly joined to the domain.
-    - View the proper domain name in the UI.
+    - View the proper domain name in the AD/AAD UI.
     - Open command window and use dsregcmd.  Additional troubleshooting tips using this tool. https://learn.microsoft.com/en-us/azure/active-directory/devices/troubleshoot-device-dsregcmd
 
-- If the password file / domain join scripts have been removed. You can reset the student VM or copy those files from the template VM.  If you are using scheduled tasks I would disable the task in the template VM and reset the student VM to manually debug.
+- If the password file / domain join scripts have been removed. You can reset the student VM or copy those files from the template VM.  If you are using scheduled tasks, we recommend that you disable the task in the template VM and reset the student VM to manually debug.
 
 # Rename student VMs to unique names
 ## How to setup the template VM
@@ -84,7 +88,7 @@ The script is doing several actions
 
 On the template vm the script will create a secretstore that is specific to the current logged in user with the password entered.  The password is stored in an encrypted file specific to the user.  Additional secrets are added to the securestore to be accessed by the RenameVM script.  The RenameVM script is downloaded from the repository and stored in the public documents folder.  The last step is to create a scheduled task that runs the RenameVM.ps1 under the administrator credentials at startup.
 
-## What is the RenameVM script do.
+## What does the RenameVM script do?
 The script does several actions:
 - Rename the student vm using the lab prefix and a random number.  Unique vm names are required to domain join.
 - Remove the encrypted password file.
