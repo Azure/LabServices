@@ -24,10 +24,10 @@ param(
     [Parameter(Mandatory,
     ValueFromPipeline=$true, 
     ValueFromPipelineByPropertyName=$true,
-    HelpMessage="Password for the local secure vault.")]
+    HelpMessage="Password for the local secretstore vault.")]
     [ValidateNotNullOrEmpty()]
     [securestring]
-    $SecureVaultPassword
+    $SecretStorePassword
 )
 
 ###################################################################################################
@@ -76,15 +76,15 @@ $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
 if (!(Test-Path $passwordPath)) {
 
     # Uses the DPAPI to encrypt the password
-    $SecureVaultPassword | Export-CliXml $passwordPath 
+    $SecretStorePassword | Export-CliXml $passwordPath 
      
 }
 
 $pass = Import-CliXml $passwordPath
 # Check if store configuration exists
-$gssc = Get-SecretStoreConfiguration
+$vault = Get-SecretVault
 
-if (!$gssc) {
+if (!$vault) {
 
     # if not create one
     Set-SecretStoreConfiguration -Scope CurrentUser -Authentication Password -PasswordTimeout (60*60) -Interaction None -Password $pass -Confirm:$false

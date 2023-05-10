@@ -56,10 +56,10 @@ param(
     [Parameter(Mandatory,
     ValueFromPipeline=$true, 
     ValueFromPipelineByPropertyName=$true,
-    HelpMessage="Password for the local secure vault.")]
+    HelpMessage="Password for the local secretstore vault.")]
     [ValidateNotNullOrEmpty()]
     [securestring]
-    $SecureVaultPassword
+    $SecretStorePassword
 )
 
 ###################################################################################################
@@ -107,7 +107,7 @@ $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
 # if password file exists try to login with that
 if (!(Test-Path $passwordPath)) {
     # Uses the DPAPI to encrypt the password
-    $SecureVaultPassword | Export-CliXml $passwordPath 
+    $SecretStorePassword | Export-CliXml $passwordPath 
      
 }
 
