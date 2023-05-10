@@ -11,7 +11,24 @@ This script is part of the scripts chain for joining a student VM to an Active D
 
 
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Lab prefix for machine names.")]
+    [ValidateNotNullOrEmpty()]
+    [ValidateLength(3,7)]
+    [string]
+    $LabPrefix,
+
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Password for the local secure vault.")]
+    [ValidateNotNullOrEmpty()]
+    [securestring]
+    $SecureVaultPassword
+)
 
 ###################################################################################################
 
@@ -37,14 +54,29 @@ Import-Module Microsoft.PowerShell.SecretStore
 $LogFile = Join-Path $($env:Userprofile) "DJLog$(Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }).txt"
 New-Item -Path $logFile -ItemType File
 
+# Check Windows 10 / 11 Operating system
+if (!([System.Environment]::OSVersion.Version.Major -match "10" -or [System.Environment]::OSVersion.Version.Major -match "11")) {
+    Write-LogFile "Requires Windows 10 or Windows 11."
+    exit
+}
+
+# Check if template
+$MetaDataHeaders = @{"Metadata"="true"}
+$vminfo = Invoke-RestMethod -Method GET -uri "http://169.254.169.254/metadata/instance?api-version=2018-10-01" -Headers $MetaDataHeaders
+
+if (!($vminfo.compute.vmScaleSetName -match "template")){
+    Write-Log "SaveDomainJoinValuesToSecureStore-TemplateVM script was not run on a template vm."
+    exit
+}
+
 # Password path
 $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
 
 # if password file exists try to login with that
 if (!(Test-Path $passwordPath)) {
-    $pass = Read-Host -AsSecureString -Prompt 'Enter the secretstore vault password'
+
     # Uses the DPAPI to encrypt the password
-    $pass | Export-CliXml $passwordPath 
+    $SecureVaultPassword | Export-CliXml $passwordPath 
      
 }
 
@@ -63,28 +95,8 @@ if (!$gssc) {
 
 Unlock-SecretStore -Password $pass
 
-$labId = Read-Host -AsSecureString -Prompt 'Enter 5 character lab id prefix. (ie Alpha)'
-Set-Secret -Name LabId -Secret $labId
-
-Set-Secret -Name TemplateIP -Secret $((Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin DHCP).IPAddress)
+Set-Secret -Name LabId -Secret $LabPrefix
 
 # Copy down files into the Public documents folder
 # TODO set the correct final location
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/RenameVM.ps1 -OutFile C:\Users\Public\Documents\RenameVM.ps1
-
-# Code to automatically create scheduled task
-# $testTask = Get-ScheduledTask -TaskName RenameVMTask -ErrorAction SilentlyContinue
-
-# if (!$testTask) {
-#     # Setup task scheduler
-#     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File RenameVM.ps1" -WorkingDirectory "C:\Users\Public\Documents"
-#     $trigger = New-ScheduledTaskTrigger -AtStartup
-#     $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest -LogonType Password
-#     $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
-#     $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Rename VM task for Lab Service VM"
-#     $SecurePassword = Read-Host -Prompt 'Enter user password to register the task' -AsSecureString
-#     $UserName = "$env:USERNAME"
-#     $Credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
-#     $Password = $Credentials.GetNetworkCredential().Password 
-#     Register-ScheduledTask RenameVMTask -InputObject $task -Password $Password -User "$env:USERNAME" -Force
-# }
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/Rename-StudentVM.ps1 -OutFile C:\Users\Public\Documents\Rename-StudentVM.ps1

@@ -10,7 +10,7 @@
 ### Prerequisites
 - Line-of-site to domain controller – The lab must have network line-of-site to your on-prem domain controller by using VNet injection. 
 
-- AAD groups – The lab must use an AAD group to manage students registered for the lab.  The DomainJoin-StudentVM.ps1 script adds the students from the AAD group to Remote Desktop Users on each domain joined lab VM to enable RDP connection.
+- AAD groups – The lab must use an AAD group to manage students registered for the lab.  The Join-Domain-StudentVM.ps1 script adds the students from the AAD group to Remote Desktop Users on each domain joined lab VM to enable RDP connection.
 
 - Lab creation - The lab must be created with **Use same password for all virtual machine** enabled and **Create a template virtual machine** enabled.
 
@@ -21,8 +21,8 @@ NOTE: When you set up line-of-site to your domain controller, you shouldn’t ch
 ### How to setup the lab template.
 - Start template VM and connect using the administor.
 - Before setting up the Domain joining scripts make sure that the template vm is ready.  Add or configure any software before doing this.
-- Copy down the SetupTemplateToDomainJoin.ps1
-- Run the SetupTemplateToDomainJoin.ps1 as administrator.
+- Copy down the Set-DomainJoinValuesToSecureStore-TemplateVM.ps1
+- Run the Set-DomainJoinValuesToSecureStore-TemplateVM.ps1 as administrator.
 - Fill in the requested information.
     - SecureStore password
     - Domain join user name
@@ -30,7 +30,7 @@ NOTE: When you set up line-of-site to your domain controller, you shouldn’t ch
     - AAD group name
     - Lab prefix
     - Current user password
-### What is the SetupTemplateToDomainJoin script doing?
+### What is the Set-DomainJoinValuesToSecureStore-TemplateVM script doing?
 The script is doing several actions
 - Create a securestore with and encrypted password file.
 - Add secrets to the securestore.
@@ -45,11 +45,11 @@ The script does several actions:
 - Add the computer to the domain.
 - Add the AAD group to the remote desktop users group.
 - Remove the encrypted password file.
-- Remove the DomainJoin-StudentVM script
+- Remove the Join-Domain-StudentVM script
 - Restart the vm.
 
 ### Increase security
-The instructions above use the labs default administrator.  If you want to have additional security, instead of using the lab administrator you can add another user (Security User) and add that user as an administrator.  Login to the template using the new security user and run the SetupTemplateToDomainJoin.ps1.  This will add an additional layer to help protect any secrets.  The students shouldn't have access to the lab administrator account.
+The instructions above use the labs default administrator.  If you want to have additional security, instead of using the lab administrator you can add another user (Security User) and add that user as an administrator.  Login to the template using the new security user and run the Set-DomainJoinValuesToSecureStore-TemplateVM.ps1.  This will add an additional layer to help protect any secrets.  The students shouldn't have access to the lab administrator account.
 
 ### Additional information
 When additional students are added to the class the Domain join script will need to be run on the additional machines before the students try to use them.  If you have the scheduled tasks setup, then this is not relevant.  You will need to confirm that the domain join connected properly.  If the student resets their machine the domain join will need to be run, unless scheduled to automatically run.
@@ -64,6 +64,8 @@ When additional students are added to the class the Domain join script will need
     - Open command window and use dsregcmd.  Additional troubleshooting tips using this tool. https://learn.microsoft.com/en-us/azure/active-directory/devices/troubleshoot-device-dsregcmd
 
 - If the password file / domain join scripts have been removed. You can reset the student VM or copy those files from the template VM.  If you are using scheduled tasks, we recommend that you disable the task in the template VM and reset the student VM to manually debug.
+
+- If the template machine has been renamed or domain joined. To reset the template back to it's original state you can either Redeploy or you can manually revert the machine.  To manual revert you can remove the machine from the domain by changing from a domain to a workgroup named "WORKGROUP".  Once this have been completed rename the machine to "Lab00000".
 
 # Rename student VMs to unique names
 ## How to setup the template VM

@@ -11,7 +11,56 @@ This script is part of the scripts chain for joining a student VM to an Active D
 
 
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Domain user that has join rights.")]
+    [ValidateNotNullOrEmpty()]
+    [string]
+    $DomainJoinUserName,
+
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Domain user password.")]
+    [ValidateNotNullOrEmpty()]
+    [securestring]
+    $DomainJoinPassword,
+
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Domain name to join.")]
+    [ValidateNotNullOrEmpty()]
+    [string]
+    $DomainName,
+
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Lab AAD group of students.")]
+    [ValidateNotNullOrEmpty()]
+    [string]
+    $AADGroupName,
+
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Lab prefix for machine names.")]
+    [ValidateNotNullOrEmpty()]
+    [ValidateLength(3,7)]
+    [string]
+    $LabPrefix,
+
+    [Parameter(Mandatory,
+    ValueFromPipeline=$true, 
+    ValueFromPipelineByPropertyName=$true,
+    HelpMessage="Password for the local secure vault.")]
+    [ValidateNotNullOrEmpty()]
+    [securestring]
+    $SecureVaultPassword
+)
 
 ###################################################################################################
 
@@ -37,14 +86,28 @@ Import-Module Microsoft.PowerShell.SecretStore
 $LogFile = Join-Path $($env:Userprofile) "DJLog$(Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }).txt"
 New-Item -Path $logFile -ItemType File
 
+# Check Windows 10 / 11 Operating system
+if (!([System.Environment]::OSVersion.Version.Major -match "10" -or [System.Environment]::OSVersion.Version.Major -match "11")) {
+    Write-LogFile "Requires Windows 10 or Windows 11."
+    exit
+}
+
+# Check if template
+$MetaDataHeaders = @{"Metadata"="true"}
+$vminfo = Invoke-RestMethod -Method GET -uri "http://169.254.169.254/metadata/instance?api-version=2018-10-01" -Headers $MetaDataHeaders
+
+if (!($vminfo.compute.vmScaleSetName -match "template")){
+    Write-Log "SaveDomainJoinValuesToSecureStore-TemplateVM script was not run on a template vm."
+    exit
+}
+
 # Password path
 $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
 
 # if password file exists try to login with that
 if (!(Test-Path $passwordPath)) {
-    $pass = Read-Host -AsSecureString -Prompt 'Enter the secretstore vault password'
     # Uses the DPAPI to encrypt the password
-    $pass | Export-CliXml $passwordPath 
+    $SecureVaultPassword | Export-CliXml $passwordPath 
      
 }
 
@@ -53,51 +116,25 @@ $pass = Import-CliXml $passwordPath
 $gssc = Get-SecretStoreConfiguration
 
 if (!$gssc) {
-
     # if not create one
     Set-SecretStoreConfiguration -Scope CurrentUser -Authentication Password -PasswordTimeout (60*60) -Interaction None -Password $pass -Confirm:$false
-    
     Register-SecretVault -Name SecretStore -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault
- 
 }
 
 Unlock-SecretStore -Password $pass
 
 # Set Secrets
-$djUser = Read-Host -AsSecureString -Prompt 'Enter user name to domain join (ie .\admin).'
-Set-Secret -Name DomainJoinUser -Secret $djUser
+Set-Secret -Name DomainJoinUser -Secret $DomainJoinUserName
 
-$djPass = Read-Host -AsSecureString -Prompt 'Enter password to domain join.'
-Set-Secret -Name DomainJoinPassword -Secret $djPass
+Set-Secret -Name DomainJoinPassword -SecureStringSecret $DomainJoinPassword 
 
-$djName = Read-Host -AsSecureString -Prompt 'Enter the domain join. (ie contoso.com)'
-Set-Secret -Name DomainName -Secret $djName
+Set-Secret -Name DomainName -Secret $DomainName
 
-$aadGroupName = Read-Host -AsSecureString -Prompt 'Enter the Lab AAD Group name.'
-Set-Secret -Name AADGroupName -Secret $aadGroupName
+Set-Secret -Name AADGroupName -Secret $AADGroupName
 
-$labId = Read-Host -AsSecureString -Prompt 'Enter 5 character lab id prefix. (ie Alpha)'
-Set-Secret -Name LabId -Secret $labId
-
-Set-Secret -Name TemplateIP -Secret $((Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin DHCP).IPAddress)
+Set-Secret -Name LabId -Secret $LabPrefix
 
 # Copy down files into the Public documents folder
 # TODO set the correct final location
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/DomainJoin.ps1 -OutFile C:\Users\Public\Documents\DomainJoin.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/Join-Domain-StudentVM.ps1 -OutFile C:\Users\Public\Documents\Join-Domain-StudentVM.ps1
 
-# Section to automatically create scheduled task
-# $testTask = Get-ScheduledTask -TaskName DomainJoinTask -ErrorAction SilentlyContinue
-
-# if (!$testTask) {
-#     # Setup task scheduler
-#     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-File DomainJoin.ps1" -WorkingDirectory "C:\Users\Public\Documents"
-#     $trigger = New-ScheduledTaskTrigger -AtStartup
-#     $principal = New-ScheduledTaskPrincipal -UserId "$($env:USERDOMAIN)\$($env:USERNAME)" -RunLevel Highest -LogonType Password
-#     $settings = New-ScheduledTaskSettingsSet -DisallowDemandStart -Hidden
-#     $task = New-ScheduledTask -Action $action -Principal $principal -Trigger $trigger -Settings $settings -Description "Domain join task for Lab Service VM"
-#     $SecurePassword = Read-Host -Prompt 'Enter user password to register the task' -AsSecureString
-#     $UserName = "$env:USERNAME"
-#     $Credentials = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $SecurePassword
-#     $Password = $Credentials.GetNetworkCredential().Password 
-#     Register-ScheduledTask DomainJoinTask -InputObject $task -Password $Password -User "$env:USERNAME" -Force
-# }

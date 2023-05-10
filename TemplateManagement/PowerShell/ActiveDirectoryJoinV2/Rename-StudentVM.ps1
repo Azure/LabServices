@@ -43,27 +43,35 @@ try {
     $LogFile = Join-Path $($env:Userprofile) "DJLog$(Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }).txt"
     New-Item -Path $logFile -ItemType File
 
+    # Check Windows 10 / 11 Operating system
+    if (!([System.Environment]::OSVersion.Version.Major -match "10" -or [System.Environment]::OSVersion.Version.Major -match "11")) {
+        Write-LogFile "Requires Windows 10 or Windows 11."
+        exit
+    }
+
+    # Check if template
+    $MetaDataHeaders = @{"Metadata"="true"}
+    $vminfo = Invoke-RestMethod -Method GET -uri "http://169.254.169.254/metadata/instance?api-version=2018-10-01" -Headers $MetaDataHeaders
+
+    if ($vminfo.compute.vmScaleSetName -match "template"){
+        Write-Log "DomainJoin-StudentVM script was not run on a student vm."
+        exit
+    }
+
     # Unlock vault
     $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
     $pass = Import-CliXml $passwordPath
     Unlock-SecretStore -Password $pass
-
-    # Check IP address for template
-    $currentIp = $((Get-NetIPAddress -AddressFamily IPv4 -PrefixOrigin DHCP).IPAddress)
-    if ($currentIp -ieq $(Get-Secret -Name TemplateIP -AsPlainText)){
-        Write-LogFile "Template VM IP, exitting."
-        exit
-    }
-
+    
     # Check if vm renamed 
     $computerName = (Get-WmiObject Win32_ComputerSystem).Name
     Write-LogFile "Rename VM section."
 
-    if ($computerName -match 'lab000') {
-        
-        # Get lab id
-        $LabPrefix = Get-Secret -Name LabId -AsPlainText
+    # Get lab id
+    $LabPrefix = Get-Secret -Name LabId -AsPlainText
 
+    if (!($computerName -match $LabPrefix)) {
+        
         # Generate a new unique name for this computer
         $newComputerName = $($LabPrefix + "-$(Get-Random)").Substring(0,14)
         
@@ -76,8 +84,6 @@ try {
 
     Write-LogFile "Clean up section."
     Remove-Item -Path $passwordPath -Force
-    # If using task scheduler
-    # Disable-ScheduledTask -TaskName 'DomainJoinTask'
     Write-LogFile "Restarting vm"
     Restart-Computer -Force
 
