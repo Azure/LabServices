@@ -112,14 +112,10 @@ if (!(Test-Path $passwordPath)) {
 }
 
 $pass = Import-CliXml $passwordPath
-# Check if store configuration exists
-$gssc = Get-SecretStoreConfiguration
 
-if (!$gssc) {
-    # if not create one
-    Set-SecretStoreConfiguration -Scope CurrentUser -Authentication Password -PasswordTimeout (60*60) -Interaction None -Password $pass -Confirm:$false
-    Register-SecretVault -Name SecretStore -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault
-}
+# Configure secret store and create vault
+Set-SecretStoreConfiguration -Scope CurrentUser -Authentication Password -PasswordTimeout (60*60) -Interaction None -Password $pass -Confirm:$false
+Register-SecretVault -Name SecretStore -ModuleName Microsoft.PowerShell.SecretStore -DefaultVault
 
 Unlock-SecretStore -Password $pass
 
