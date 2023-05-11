@@ -97,7 +97,7 @@ $MetaDataHeaders = @{"Metadata"="true"}
 $vminfo = Invoke-RestMethod -Method GET -uri "http://169.254.169.254/metadata/instance?api-version=2018-10-01" -Headers $MetaDataHeaders
 
 if (!($vminfo.compute.vmScaleSetName -match "template")){
-    Write-Log "SaveDomainJoinValuesToSecureStore-TemplateVM script was not run on a template vm."
+    Write-Log "SaveDomainJoinValuesToSecretStore-TemplateVM script was not run on a template vm."
     exit
 }
 
