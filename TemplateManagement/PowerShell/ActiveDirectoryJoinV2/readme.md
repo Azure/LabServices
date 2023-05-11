@@ -1,7 +1,7 @@
 # Sample: Domain register or join Windows 10/11 lab VMs
 This sample provides scripts to help with two recommended options for registering/joining Azure Lab Services VMs to a domain:
 - **Students self-register/join**: Students can self-register (via [AAD register](https://learn.microsoft.com/azure/active-directory/devices/concept-azure-ad-register)) or self-join (via [AAD join](https://learn.microsoft.com/azure/active-directory/devices/concept-azure-ad-join-hybrid)) their lab VMs.  Even when students self-register/join their lab VMs, you need to rename the lab VMs to ensure they are unique before they are registerd/joined to AAD by students.  We provide [sample PowerShell scripts](#rename-student-vms-for-aad-register-and-aad-join) that rename student VMs to unique names.
-- **Domain join on behalf of students**: IT admins can domain join lab VMs on behalf of students using PowerShell to Hybrid AAD join.  We provide sample PowerShell scripts that perform the domain join.
+- **Domain join on behalf of students**: IT admins can domain join lab VMs on behalf of students using PowerShell to Hybrid AAD join.  We provide [sample PowerShell scripts](#hybrid-aad-join-vms-on-behalf-of-students) that perform the domain join.
 
 For more information on this sample, see the blog post **TODO - need to add link when published**.
 
