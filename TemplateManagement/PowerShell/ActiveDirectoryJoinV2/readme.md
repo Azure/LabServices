@@ -13,14 +13,14 @@ The steps in this section show how to set up the sample scripts that uniquely re
 ### Prerequisites
 - **Lab creation**: The lab must be created with the **Create a template virtual machine** option enabled.  If you are planning students to AAD join their lab VMs, you should also enable the **Use same password for all virtual machines** option.
 - **Template VM setup**: You should install all other software/customizations *before* you set up the scripts to rename.  Also, we *don't* recommend exporting the template VM image with the scripts set up because they may cause ill-side effects (e.g., script inadvertently run on startup, errorneous values saved in the SecretStore, etc.)
-- **Windows versions**: The template and student VMs should use a Windows 10/11 image.
+- **Windows versions**: The template and student VMs should use a Windows 10/11 image.  This has not been tested on Windows server versions.
 
 The steps in this sample typically need to be performed by an **IT admin** or **educator** who has:
 - Permission to [create labs](https://learn.microsoft.com/azure/lab-services/concept-lab-services-role-based-access-control#lab-creator-role) (at a minimum) in Azure Lab Services.
 - Proficiency with scripting, such as PowerShell.
 
 ### Information you'll need
-- Lab name prefix. The VMs need unique names and the prefix will help identify the lab that the VMs belong to when viewing device entries in AD/AAD.
+- Lab name prefix. The VMs need unique names and the prefix will help identify the lab that the VMs belong to when viewing device entries in AD/AAD.  The prefix should be only alphanumeric characters, no special characters.
 - A SecretStore password.  This should be the password of a secondary local admin account that you add to the template VM, that is used to store values in the SecretStore.  You _shouldn't_ use the default local admin account because students that AAD join their lab VMs will need to use this account the first time they log into their lab VM.  Likewise, you may want students that use AAD register to also use the default local admin account.  For more info see the [Increasing security](#increasing-security) section.
 
 ### Template VM details
@@ -46,7 +46,7 @@ After you're done setting up the template VM:
 
 Once the student VMs are renamed:
 - If the student is AAD joining their VM, they should log in the first time using the local admin account and follow the steps in the TODO: Link to blog post.  Once their lab VM is AAD joined, they can log in with their domain account by changing the RDP connection file accordingly.
-- If the student is AAD registering their VM, they can log in using either a local admin or non-admin accounnt and follow the steps in the TODO: Link to blog post.  Once their lab VM is AAD registered, they will continue to use the local admin or non-admin account to log in.
+- If the student is AAD registering their VM, they can log in using either a local admin or non-admin account and follow the steps in the TODO: Link to blog post.  Once their lab VM is AAD registered, they will continue to use the local admin or non-admin account to log in.
 
 The **Rename-StudentVM.ps1** does several actions:
 - Renames the student VM using the lab prefix and a random number.  Unique VM names are required to domain join.
@@ -143,7 +143,7 @@ The **Join-Domain-StudentVM.ps1** script explicitly checks if it's being run on 
 
 - Check that the student VM is properly joined to the domain.
     - View the proper domain name in the AD/AAD UI.
-    - Open command window and use dsregcmd.  Additional troubleshooting tips using this tool. https://learn.microsoft.com/en-us/azure/active-directory/devices/troubleshoot-device-dsregcmd
+    - Open command window and use dsregcmd.  Additional troubleshooting tips using this tool. https://learn.microsoft.com/azure/active-directory/devices/troubleshoot-device-dsregcmd
 
 - If the password file or **Join-Domain-StudentVM.ps1** script has been removed from the student VM, you can reset the student VM or copy those files from the template VM.  If you also need to manually troubleshoot the script on the student VM, make sure you disable the scheduled startup task on the template VM (if applicable) before you reset the student VM; otherwise, the script will run automatically when you start the student VM.
 

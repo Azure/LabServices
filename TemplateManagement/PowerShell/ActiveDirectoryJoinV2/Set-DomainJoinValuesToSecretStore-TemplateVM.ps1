@@ -134,5 +134,5 @@ Set-Secret -Name LabId -Secret $LabPrefix
 
 # Copy down files into the Public documents folder
 # TODO set the correct final location
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/Join-Domain-StudentVM.ps1 -OutFile C:\Users\Public\Documents\Join-Domain-StudentVM.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/LabServices/domainjoinv2/TemplateManagement/PowerShell/ActiveDirectoryJoinV2/Join-Domain-StudentVM.ps1 -OutFile "$env:PUBLIC\Documents\Join-Domain-StudentVM.ps1"
 

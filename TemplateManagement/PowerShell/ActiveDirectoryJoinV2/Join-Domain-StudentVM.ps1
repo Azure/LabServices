@@ -56,9 +56,9 @@ try {
     New-Item -Path $logFile -ItemType File
 
     # Check Windows 10 / 11 Operating system
-    if (!([System.Environment]::OSVersion.Version.Major -match "10" -or [System.Environment]::OSVersion.Version.Major -match "11")) {
+    if ([System.Environment]::OSVersion.Version.Major -lt "10") {
         Write-LogFile "Requires Windows 10 or Windows 11."
-        exit
+        exit 1
     }
 
     # Check if template
@@ -70,7 +70,7 @@ try {
         exit
     }
 
-    # Unlock vault
+    # Unlock vault.  The vault and secrets were created using the Set-DomainJoinValuesToSecretStore-Template script
     $passwordPath = Join-Path $($env:Userprofile) SecretStore.vault.credential
     $pass = Import-CliXml $passwordPath
     Unlock-SecretStore -Password $pass
@@ -138,7 +138,7 @@ try {
 
      Write-LogFile "Clean up section."
      Remove-Item -Path $passwordPath -Force
-     Remove-Item -Path "C:\Users\Public\Documents\DomainJoin.ps1" -Force
+     Remove-Item -Path "$env:PUBLIC\Documents\DomainJoin.ps1" -Force
      # If using task scheduler
      # Disable-ScheduledTask -TaskName 'DomainJoinTask'
      Write-LogFile "Restarting vm"
