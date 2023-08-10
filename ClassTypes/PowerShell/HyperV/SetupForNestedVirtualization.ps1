@@ -10,6 +10,8 @@ This script prepares a Windows Server machine to use virtualization.  This inclu
 
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory=$false)][bool] $InstallDhcp = $true,
+    [Parameter(Mandatory=$false)][switch]$Force = $false
 )
 
 ###################################################################################################
@@ -32,6 +34,10 @@ $Error.Clear()
 
 # Configure strict debugging.
 Set-PSDebug -Strict
+
+# Configure variables for ShouldContinue prompts
+$YesToAll = $Force
+$NoToAll = $false
 
 ###################################################################################################
 #
@@ -175,6 +181,27 @@ function Install-DHCP {
     Set-ItemProperty -Path registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ServerManager\Roles\12 -Name ConfigurationState -Value 2
 }
 
+function Install-DhcpScope {
+    param (
+        [Parameter(Mandatory=$true)][string] $RouterIpAddress,
+        [Parameter(Mandatory=$true)][string] $StartRangeForClientIps,
+        [Parameter(Mandatory=$true)][string] $EndRangeForClientIps,
+        [Parameter(Mandatory=$true)][string] $SubnetMaskForClientIps
+    )
+    $dnsServerIp = "168.63.129.16"
+    
+    # Add scope for client vm ip address
+    $scopeName = "LabServicesDhcpScope"
+
+    $dhcpScope = Select-ResourceByProperty `
+        -PropertyName 'Name' -ExpectedPropertyValue $scopeName `
+        -List @(Get-DhcpServerV4Scope) `
+        -NewObjectScriptBlock { Add-DhcpServerv4Scope -name $scopeName -StartRange $StartRangeForClientIps -EndRange $EndRangeForClientIps -SubnetMask $SubnetMaskForClientIps -State Active
+                                Set-DhcpServerV4OptionValue -DnsServer $dnsServerIp -Router $RouterIpAddress
+                            }
+    Write-Output "Using $dhcpScope"
+}
+
 <#
 .SYNOPSIS
 Funtion will find object in given list with specified property of the specified expected value.  If object cannot be found, a new one is created by executing scropt in the NewObjectScriptBlock parameter.
@@ -189,12 +216,12 @@ Script to run if object with the specified value of specified property name is n
 
 #>
 function Select-ResourceByProperty {
-    [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][string]$PropertyName ,
         [Parameter(Mandatory = $true)][string]$ExpectedPropertyValue,
         [Parameter(Mandatory = $false)][array]$List = @(),
-        [Parameter(Mandatory = $true)][scriptblock]$NewObjectScriptBlock
+        [Parameter(Mandatory = $true)][scriptblock]$NewObjectScriptBlock,
+        [Parameter(Mandatory = $false)][string] $ShouldContinuePrompt
     )
     
     $returnValue = $null
@@ -202,7 +229,11 @@ function Select-ResourceByProperty {
     
     if ($items.Count -eq 0) {
         Write-Verbose "Creating new item with $PropertyName =  $ExpectedPropertyValue."
-        $returnValue = & $NewObjectScriptBlock
+        if (-not [String]::IsNullOrEmpty($ShouldContinuePrompt) -and  $PSCmdlet.ShouldContinue($ShouldContinuePrompt, $env:COMPUTERNAME, [ref] $YesToAll, [ref] $NoToAll)){
+            $returnValue = & $NewObjectScriptBlock
+        }else{
+            return $null
+        }
     }
     elseif ($items.Count -eq 1) {
         $returnValue = $items[0]
@@ -250,41 +281,42 @@ try {
     if (-not (Get-RunningAsAdministrator)) { Write-Error "Please re-run this script as Administrator." }
 
     # Install HyperV service and client tools
-    Write-Output "Installing Hyper-V, if needed."
-    Install-HypervAndTools
+    if ($PSCmdlet.ShouldContinue("Install Hyper-V feature and tools.", $env:COMPUTERNAME, [ref] $YesToAll, [ref] $NoToAll )){
+        Write-Output "Installing Hyper-V, if needed."
+        Install-HypervAndTools
+    }else{
+        Write-Error "Hyper-V feature and tools not installed."
+        exit;
+    }
 
     # Pin Hyper-V to the user's desktop.
-    Write-Output "Creating shortcut to Hyper-V Manager on desktop."
-    $Shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($(Join-Path "$env:UserProfile\Desktop" "Hyper-V Manager.lnk"))
-    $Shortcut.TargetPath = "$env:SystemRoot\System32\virtmgmt.msc"
-    $Shortcut.Save()
-
-    # Ip addresses and range information.
-    $ipAddress = "192.168.0.1"
-    $ipAddressPrefixRange = "24"
-    $ipAddressPrefix = "192.168.0.0/$ipAddressPrefixRange"
-    $startRangeForClientIps = "192.168.0.100"
-    $endRangeForClientIps = "192.168.0.200"
-    $subnetMaskForClientIps = "255.255.255.0"
-    # Azure Static DNS Server IP
-    $dnsServerIp = "168.63.129.16"
+    if ($PSCmdlet.ShouldContinue("Install Hyper-V feature and tools.", $env:COMPUTERNAME, [ref] $YesToAll, [ref] $NoToAll)){
+        Write-Output "Creating shortcut to Hyper-V Manager on desktop."
+        $Shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($(Join-Path "$env:UserProfile\Desktop" "Hyper-V Manager.lnk"))
+        $Shortcut.TargetPath = "$env:SystemRoot\System32\virtmgmt.msc"
+        $Shortcut.Save()
+    }
 
     if (Get-RunningServerOperatingSystem) {
-        # Install DHCP so client vms will automatically get an IP address.
-        Write-Output "Installing DHCP, if needed."
-        Install-DHCP 
 
-        # Add scope for client vm ip address
-        $scopeName = "LabServicesDhcpScope"
+        # Ip addresses and range information.
+        $ipAddress = "192.168.0.1"
+        $ipAddressPrefixRange = "24"
+        $ipAddressPrefix = "192.168.0.0/$ipAddressPrefixRange"
+        $startRangeForClientIps = "192.168.0.100"
+        $endRangeForClientIps = "192.168.0.200"
+        $subnetMaskForClientIps = "255.255.255.0"
+       
 
-        $dhcpScope = Select-ResourceByProperty `
-            -PropertyName 'Name' -ExpectedPropertyValue $scopeName `
-            -List @(Get-DhcpServerV4Scope) `
-            -NewObjectScriptBlock { Add-DhcpServerv4Scope -name $scopeName -StartRange $startRangeForClientIps -EndRange $endRangeForClientIps -SubnetMask $subnetMaskForClientIps -State Active
-                                    Set-DhcpServerV4OptionValue -DnsServer $dnsServerIp -Router $ipAddress
-                                }
-        Write-Output "Using $dhcpScope"
-    
+        if ($InstallDhcp){
+            # Install DHCP so client vms will automatically get an IP address.
+            Write-Warning "Installing DHCP role on an Azure VM is not a supported scenario.  It is recommended to manually set the ip address for Hyper-V VMs.  See https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-faq#can-i-deploy-a-dhcp-server-in-a-vnet"
+            if ($PSCmdlet.ShouldContinue("Install DHCP role and scope.", $env:COMPUTERNAME, [ref] $YesToAll, [ref] $NoToAll)) {
+                Write-Output "Installing DHCP, if needed."
+                Install-DHCP 
+                Install-DhcpScope -RouterIpAddress $ipAddress -StartRangeForClientIps $startRangeForClientIps -EndRangeForClientIps $endRangeForClientIps -SubnetMaskForClientIps $subnetMaskForClientIps
+            }
+        }
 
         # Create Switch
         Write-Output "Setting up network for client virtual machines."
@@ -292,47 +324,63 @@ try {
         $vmSwitch = Select-ResourceByProperty `
             -PropertyName 'Name' -ExpectedPropertyValue $switchName `
             -List (Get-VMSwitch -SwitchType Internal) `
-            -NewObjectScriptBlock { New-VMSwitch -Name $switchName -SwitchType Internal }
-        Write-Output "Using $vmSwitch"
+            -NewObjectScriptBlock { New-VMSwitch -Name $switchName -SwitchType Internal } `
+            -ShouldContinuePrompt "Create switch named $switchName."
+        if ($null -eq $vmSwitch) { Write-Error "VM switch $switchName not created or found"}
+        Write-Output "Using switch '$vmSwitch'"
 
         # Get network adapter information
         $netAdapter = Select-ResourceByProperty `
             -PropertyName "Name" -ExpectedPropertyValue "*$switchName*"  `
             -List @(Get-NetAdapter) `
-            -NewObjectScriptBlock { Write-Error "No Net Adapters found" } 
-        Write-Output "Using  $netAdapter"
+            -NewObjectScriptBlock { Write-Error "No network adapaters with name $switchName found." } 
+        Write-Output "Using network adapter '$netAdapter'"
         Write-Output "Adapter found is $($netAdapter.ifAlias) and Interface Index is $($netAdapter.ifIndex)"
 
         # Create IP Address 
         $netIpAddr = Select-ResourceByProperty  `
             -PropertyName 'IPAddress' -ExpectedPropertyValue $ipAddress `
             -List @(Get-NetIPAddress) `
-            -NewObjectScriptBlock { New-NetIPAddress -IPAddress $ipAddress -PrefixLength $ipAddressPrefixRange -InterfaceIndex $netAdapter.ifIndex }
-        if (($netIpAddr.PrefixLength -ne $ipAddressPrefixRange) -or ($netIpAddr.InterfaceIndex -ne $netAdapter.ifIndex)) {
+            -NewObjectScriptBlock { New-NetIPAddress -IPAddress $ipAddress -PrefixLength $ipAddressPrefixRange -InterfaceIndex $netAdapter.ifIndex } `
+            -ShouldContinuePrompt "Create IP address $ipAddress"
+        if ($null -eq $netIpAddr) {
+            Write-Error "Couldn't create or find IP address $ipAddress."
+        }elseif (($netIpAddr.PrefixLength -ne $ipAddressPrefixRange) -or ($netIpAddr.InterfaceIndex -ne $netAdapter.ifIndex)) {
             Write-Error "Found Net IP Address $netIpAddr, but prefix $ipAddressPrefix ifIndex not $($netAdapter.ifIndex)."
+        }else{
+            Write-Output "Net ip address found is $ipAddress"
         }
-        Write-Output "Net ip address found is $ipAddress"
 
         # Create NAT
         $natName = "LabServicesNat"
-        $netNat = Select-ResourceByProperty -PropertyName 'Name' -ExpectedPropertyValue $natName -List @(Get-NetNat) -NewObjectScriptBlock { New-NetNat -Name $natName -InternalIPInterfaceAddressPrefix $ipAddressPrefix }
-        if ($netNat.InternalIPInterfaceAddressPrefix -ne $ipAddressPrefix) {
+        $netNat = Select-ResourceByProperty `
+            -PropertyName 'Name' `
+            -ExpectedPropertyValue $natName `
+            -List @(Get-NetNat) `
+            -NewObjectScriptBlock { New-NetNat -Name $natName -InternalIPInterfaceAddressPrefix $ipAddressPrefix } `
+            -ShouldContinuePrompt "Create NAT network $ipAddressPrefix"
+        if ($null -eq $netNat){
+            Write-Error "Couldn't create or find NAT network $ipAddressPrefix"
+        }elseif ($netNat.InternalIPInterfaceAddressPrefix -ne $ipAddressPrefix) {
             Write-Error "Found nat with name $natName, but InternalIPInterfaceAddressPrefix is not $ipAddressPrefix."
+        }else{
+            Write-Output "Nat found is $netNat"
         }
-        Write-Output "Nat found is $netNat"
+
         #Make sure WinNat will start automatically so Hyper-V VMs will have internet connectivity.
-        Set-Service -Name WinNat -StartupType Automatic
+        if (((Get-Service -Name WinNat | Select-Object -ExpandProperty StartType) -ne 'Automatic') -and $PSCmdlet.ShouldContinue($env:COMPUTERNAME, "Automatically start WinNat service.", [ref] $YesToAll, [ref] $NoToAll)) {
+            Set-Service -Name WinNat -StartupType Automatic
+        }
         if ($(Get-Service -Name WinNat | Select-Object -ExpandProperty StartType) -ne 'Automatic')
         {
-            Write-Host "Unable to set WinNat service to Automatic.  Hyper-V virtual machines will not have internet connectivity when service is not running." -ForegroundColor Yellow
-        }  
+            Write-Warning "Unable to set WinNat service to Automatic.  Hyper-V virtual machines will not have internet connectivity when service is not running."
+        }              
     }
     else {
-        Write-Host -Object "DHCP Server is not supported on Windows 10. `
-        Use 'Default Switch' for the Configure Networking connection." -ForegroundColor Yellow
+        Write-Host -Object "On Windows 10 and later, use 'Default Switch' when configuring network connection for Hyper-V VMs." -ForegroundColor Yellow
     }
     # Tell the user script is done.    
-    Write-Host -Object "Script completed." -ForegroundColor Green
+    Write-Host "Script completed." -ForegroundColor Green
 }
 finally {
     # Restore system to state prior to execution of this script.
