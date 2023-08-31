@@ -1,19 +1,32 @@
+<#
+The MIT License (MIT)
+Copyright (c) Microsoft Corporation  
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.  
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
+.SYNOPSIS
+    Creates a Azure Lab Services lab plan and lab that can be used to create an ethical hacking lab.
+.DESCRIPTION
+    Creates a Azure Lab Services lab plan and lab that can be used to create an ethical hacking lab.
+.PARAMETER Username
+    The username for the local administrator account on the VM.
+.PARAMETER Username
+    The password for the local administrator account on the VM.   See https://learn.microsoft.com/azure/virtual-machines/windows/faq#what-are-the-password-requirements-when-creating-a-vm-  
+.PARAMETER Location
+    Location name for Azure region where the lab plan and lab should reside.  Run `Get-AzLocation | Format-Table` to see all available.
+#>
+
 [CmdletBinding()]
 param(
-    [parameter(Mandatory = $false)]
-    [string]$Email,
 
-    [parameter(Mandatory = $false, HelpMessage = "Default username for all VMs")]
-    [string]$Username = "AdminUser",
+    [parameter(Mandatory = $true, HelpMessage = "Username for all VMs")]
+    [string]$UserName = "AdminUser",
 
-    [parameter(Mandatory = $false, HelpMessage = "Default password for all VMs")]
-    [string]$Password = "P@ssword1!",
+    [parameter(Mandatory = $true, HelpMessage = "Password for all VMs")]
+    [securestring]$Password,
 
-    [parameter(Mandatory = $false, HelpMessage = "Default location for lab plan")]
-    [string]$Location = "centralus",
-
-    [parameter(Mandatory = $false, HelpMessage = "Default Base for lab plan, lab, and resource group names")]
-    [string]$ClassName = "EthicalHacking"
+    [parameter(Mandatory = $true, HelpMessage = "Location for lab plan")]
+    [string]$Location
 )
 
 ###################################################################################################
@@ -44,20 +57,23 @@ trap {
 #
 
 # Download AzLab module file, import, and then delete the file
+if (-not (Get-Module -ListAvailable -Name 'Az')) {
+    Import-Module Az -Force 
+}
 
-Import-Module Az.LabServices -Force
+$ClassName = "EthicalHacking"
 
 
 # Configure parameter names
-$rgName     = "$($ClassName)RG_" + (Get-Random)
-$labPlanName     = "$($ClassName)Acct_" + (Get-Random)
+$rgName     = "rg-$ClassName-$(Get-Random)"
+$labPlanName     = "lp-$ClassName$(Get-Random)"
 $labName    =  "$($ClassName)Lab"
 
 # Create resource group
 Write-Host "Creating resource group $rgName"
 $rg = New-AzResourceGroup -Name $rgName -Location $Location
     
-# Create Lab Account
+# Create Lab Plan
 Write-Host "Creating lab plan $labPlanName"
 $labPlan  = New-AzLabServicesLabPlan -ResourceGroupName $rgName -Name $labPlanName -Location $Location -AllowedRegion @($Location)
 
@@ -68,11 +84,11 @@ Write-Host "Locating '$imageName' image for use in template virtual machine"
 $imageObject = $labPlan | Get-AzLabServicesPlanImage | Where-Object {$_.DisplayName -EQ $imageName -and $_.Sku -EQ $sku -and (-not [string]::IsNullOrEmpty($_.EnabledState))} | Where-Object -Property EnabledState -eq "Enabled"
 
 if($null -eq $imageObject) {
-    Write-Error "Image '$imageName' was not found in the gallery images. No lab was created within lab account $labPlanName."
+    Write-Error "Image '$imageName' was not found in the gallery images. Couldn't create lab $labName."
     exit -1
 }
 
-# Create lab on the lab account
+# Create lab using the lab plan
 Write-Host "Creating $labName with '$($imageObject.Name)' image"
 Write-Warning "  Warning: Creating template vm may take up to 20 minutes."
 $lab = New-AzLabServicesLab -Name $labName `
@@ -80,8 +96,8 @@ $lab = New-AzLabServicesLab -Name $labName `
         -Location $Location `
         -LabPlanId $labPlan.Id.ToString() `
         -AdditionalCapabilityInstallGpuDriver Disabled `
-        -AdminUserPassword (ConvertTo-SecureString $password -AsPlainText -Force) `
-        -AdminUserUsername "adminUser" `
+        -AdminUserPassword $(ConvertTo-SecureString $Password -AsPlainText -Force) `
+        -AdminUserUsername $UserName `
         -AutoShutdownProfileShutdownOnDisconnect Disabled `
         -AutoShutdownProfileShutdownOnIdle None `
         -AutoShutdownProfileShutdownWhenNotConnected Disabled `
@@ -89,14 +105,14 @@ $lab = New-AzLabServicesLab -Name $labName `
         -ConnectionProfileClientSshAccess None `
         -ConnectionProfileWebRdpAccess None `
         -ConnectionProfileWebSshAccess None `
-        -Description "Ethical Hacking Lab." `
+        -Description "Ethical Hacking lab." `
         -ImageReferenceOffer $imageObject.Offer.ToString() `
         -ImageReferencePublisher $imageObject.Publisher.ToString() `
         -ImageReferenceSku $imageObject.Sku.ToString() `
         -ImageReferenceVersion $imageObject.Version.ToString() `
         -SecurityProfileOpenAccess Disabled `
         -SkuCapacity 2 `
-        -SkuName "Classic_Fsv2_2_4GB_128_S_SSD" `
+        -SkuName "Classic_Dsv4_4_16GB_128_P_SSD" `
         -Title $labName `
         -VirtualMachineProfileCreateOption "TemplateVM" `
         -VirtualMachineProfileUseSharedPassword Enabled
@@ -107,32 +123,4 @@ if($null -eq $lab) {
     exit -1
 }
 
-Write-Host "Lab has been created."
-
-# Stop the VM image so that it is not costing the end user
-Write-Host "Stopping the template VM within $labName"
-Write-Warning "  Warning: This could take some time to stop the template VM."
-$labTemplateVM = Get-AzLabServicesTemplateVM -Lab $lab
-if ($labTemplateVM.State -ne "Stopped") {
-    Stop-AzLabServicesVm -VM $labTemplateVM
-}
-# Give permissions to optional email address user
-if ($Email) 
-{
-    #grant access to labs if an educator email address was provided
-    Write-Host "Retrieving user data for $Email"
-    $userId = Get-AzADUser -UserPrincipalName $Email | Select-Object -expand Id
-
-    if($null -eq $userId) {
-        Write-Warning "$Email is NOT an user in your AAD. Could not add permissions for this user to the lab account and lab."
-    }
-    else
-    {
-        Write-Host "Adding $Email as a Reader to the lab account"
-        New-AzRoleAssignment -ObjectId $userId -RoleDefinitionName 'Reader' -ResourceGroupName $rg.ResourceGroupName -ResourceName $labPlan.Name -ResourceType $labPlan.Type
-        Write-Host "Adding $Email as a Contributor to the lab"
-        New-AzRoleAssignment -ObjectId $userId -RoleDefinitionName 'Contributor' -Scope $lab.id
-    }
-}
-
-Write-Host "Done!" -ForegroundColor 'Green'
+Write-Host "Done! Lab plan and lab have been created." -ForegroundColor Green
