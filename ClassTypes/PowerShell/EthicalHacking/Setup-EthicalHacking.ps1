@@ -1,4 +1,7 @@
- <#
+#Requires -RunAsAdministrator
+#Requires -Modules Hyper-V
+
+<#
 The MIT License (MIT)
 Copyright (c) Microsoft Corporation  
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
@@ -276,36 +279,44 @@ function Convert-VdmkToVhdx {
 Downloads Kali Linux Hyper-V image and returns the path to the virtual machine configuration information file.
 #>
 function Get-KaliLinuxDisk {
-    $vhdxPath = "$env:PUBLIC\Documents\Hyper-V\Virtual hard disks\Kali-Linux-2020.4-vmware-amd64.vhdx"
+    $_kaliLinuxVersion = '2023.3'
+    $_kaliLinuxBaseFileName = "kali-linux-$($_kaliLinuxVersion)a-hyperv-amd64"
+    $_kaliLinuxVhdxFileName = "$($_kaliLinuxBaseFileName).vhdx"
+
+    $_kaliLinuxExtractedFilesFolder = "$env:PUBLIC\Documents\Hyper-V\Virtual hard disks"
+    New-Item -Path $_kaliLinuxExtractedFilesFolder -ItemType Directory -Force | Out-Null
+   
+    $vhdxPath = "$env:PUBLIC\Documents\Hyper-V\Virtual hard disks\$_kaliLinuxVhdxFileName"
 
     if (Test-Path ($vhdxPath)) { return $vhdxPath }
 
     Write-Host "Downloading Kali Linux image compressed file. "
-     $_kaliLinuxExtractedFilesFolder = Join-Path $env:TEMP 'KaliLinux'
-    #Download page is https://www.offensive-security.com/kali-linux-vm-vmware-virtualbox-image-download/
-    $_kaliDownloadedFileName = 'kali-linux-2021.4-vmware-amd64.7z'
-    $kaliLinux7ZipFile = Get-WebFile -DownloadUrl 'https://kali.download/virtual-images/kali-2021.4/kali-linux-2021.4-vmware-amd64.7z' -TargetFilePath $(Join-Path $_kaliLinuxExtractedFilesFolder $_kaliDownloadedFileName) -SkipIfAlreadyExists $true
+
+
+    #Download page is https://www.kali.org/get-kali/#kali-virtual-machines
+    #Docs at https://www.kali.org/docs/virtualization/import-premade-hyperv/
+    $_kaliDownloadedFileName = "$_kaliLinuxBaseFileName.7z"
+    $kaliLinux7ZipFile = Get-WebFile -DownloadUrl "https://cdimage.kali.org/kali-$_kaliLinuxVersion/$_kaliDownloadedFileName" -TargetFilePath $(Join-Path $_kaliLinuxExtractedFilesFolder $_kaliDownloadedFileName) -SkipIfAlreadyExists $true
  
     $sevenZipExe = Join-Path $env:ProgramFiles '7-zip\7z.exe'
     if (-not (Test-Path $sevenZipExe)) {
         Write-Host "Downloading and installing 7-Zip to extract Kali Linux compressed files."
-          #Download page is https://www.7-zip.org/download.html.
+        #Download page is https://www.7-zip.org/download.html.
         $sevenZipInstallerPath = Get-WebFile -DownloadUrl 'https://www.7-zip.org/a/7z1900-x64.msi' -TargetFilePath $(Join-Path $env:TEMP '7zip.msi') -SkipIfAlreadyExists $true
   
         Invoke-Process -FileName "msiexec.exe" -Arguments "/i $sevenZipInstallerPath /quiet"
     }
 
     Write-Host "Extracting Kali Linux files from compressed file."
-    if ($null -eq (Get-ChildItem "$_kaliLinuxExtractedFilesFolder\Kali-Linux-2021.4-vmware-amd64.vmwarevm" -Recurse | Select-Object -expand FullName)) {
-        Invoke-Process -FileName $sevenZipExe -Arguments "x $kaliLinux7ZipFile -o$_kaliLinuxExtractedFilesFolder -r"
+    if ($null -eq (Get-ChildItem "$_kaliLinuxExtractedFilesFolder\$_kaliLinuxVhdxFileName" -Recurse | Select-Object -expand FullName)) {
+        Invoke-Process -FileName $sevenZipExe -Arguments "x ""$kaliLinux7ZipFile"" -o""$($_kaliLinuxExtractedFilesFolder)"" -r"
     }
-    $vmdkFile = Get-ChildItem "$_kaliLinuxExtractedFilesFolder\Kali-Linux-2021.4-vmware-amd64.vmwarevm\Kali-Linux-2021.4-vmware-amd64.vmdk" -Recurse | Select-Object -expand FullName
-    Write-Verbose "VmdkFile path: $vmdkFile"
+    $extractedVhdxPath = Get-ChildItem "$_kaliLinuxExtractedFilesFolder\$_kaliLinuxVhdxFileName" -Recurse | Select-Object -expand FullName
+    
+    
+    Write-Verbose "Vhdx path: $extractedVhdxPath"
 
-    Write-Host "Converting downloading Kali Linux files to Hyper-V files."
-    Convert-VdmkToVhdx -VmdkFilePath $vmdkFile -VhdxFilePath $vhdxPath
-
-    return $vhdxPath
+    return $extractedVhdxPath
 }
 
 <#
@@ -325,11 +336,16 @@ function New-KaliLinuxVM {
     Write-Host "Looking for Kali Linux virtual machine.  Virtual machine will be created if not found."
     $vm = @(Get-VM) | Where-Object Name -Like $computerName
     if ($null -eq $vm) {
-        $vm = New-VM -Name $computerName -MemoryStartupBytes 2048MB -VHDPath $kaliLinuxHardDiskFilePath 
+        $vm = New-VM -Name $computerName -MemoryStartupBytes 2048MB -VHDPath $kaliLinuxHardDiskFilePath -Generation 2 
+        Set-VM -Name $computerName -EnhancedSessionTransportType HVSocket
+        Set-VMFirmware -VMName $computerName -EnableSecureBoot Off
+        Set-VMProcessor -VMName $computerName -Count 2
+        Enable-VMIntegrationService -VMName "$computerName" -Name "Guest Service Interface"
     }
     Write-Host "Adding network adapter to Kali Linux virtual machine."
     if ($null -eq ($vm | Get-VMNetworkAdapter | Where-Object SwitchName -like $SwitchName)) {
-        $vm | Add-VMNetworkAdapter -SwitchName $SwitchName -IsLegacy $true
+        $vm | Remove-VMNetworkAdapter
+        $vm | Add-VMNetworkAdapter -SwitchName $SwitchName
     }
 }
 
