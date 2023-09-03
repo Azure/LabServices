@@ -1,12 +1,12 @@
 # Introduction
 
-These scripts will guide you to create and setup an Azure Lab Services lab that is configured to run an [ethical hacking class](https://docs.microsoft.com/azure/lab-services/classroom-labs/class-type-ethical-hacking). Part 1 of these instructions will be to create the lab plan on Azure. Part 2 of these instructions will be to prepare the template VM instance of the newly created lab to be used by your class.
+These scripts will guide you to create and setup an Azure Lab Services lab that is configured to run an [ethical hacking class](https://docs.microsoft.com/azure/lab-services/classroom-labs/class-type-ethical-hacking). Part 1 of these instructions will be to create the lab plan and lab resource in Azure. Part 2 of these instructions will be to prepare the template VM instance of the newly created lab to be used by your class.
 
 - - - -
 
-## Part 1 - Create a lab plan
+## Part 1 - Create Azure Lab Resources
 
-This script will help create a lab plan in your Azure subscription from your local machine.
+This script will help create a lab plan and lab in your Azure subscription.
 
 ### Prerequisites
 

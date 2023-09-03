@@ -32,4 +32,4 @@ For related information, refer to the following articles:
 - [Bring a custom image to Shared Image Gallery](https://docs.microsoft.com/azure/lab-services/upload-custom-image-shared-image-gallery)
 - [Shared Image Gallery overview](https://docs.microsoft.com/azure/virtual-machines/shared-image-galleries)
 - [Attach or detach a Shared Image Gallery](https://docs.microsoft.com/azure/lab-services/how-to-attach-detach-shared-image-gallery)
-- [Use a Shared Image Gallery](https://docs.microsoft.com/azure/lab-services/how-to-use-shared-image-gallery)
+- [Use an Azure Compute Gallery](https://docs.microsoft.com/azure/lab-services/how-to-use-shared-image-gallery)

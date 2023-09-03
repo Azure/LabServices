@@ -38,7 +38,7 @@ The lab (remote) VM runs either the X2Go or Xrdp server. Graphical sessions are 
 
 The scripts below automatically install the X2Go\Xrdp server and the MATE\GNOME graphical desktop environment.  To install using these scripts, SSH into the template VM and paste in one of the following scripts depending on which desktop environment you prefer:
 
-#### Install MATE Desktop And X2Go Server
+#### Install MATE Desktop and X2Go Server
 
 ```bash
 sudo sh -c "$(curl -fsSL https://raw.githubusercontent.com/Azure/LabServices/main/TemplateManagement/Bash/LinuxGraphicalDesktopSetup/GNOME_MATE/Ubuntu/x2go-mate.sh)"

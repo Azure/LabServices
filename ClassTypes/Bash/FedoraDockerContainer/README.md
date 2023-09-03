@@ -12,6 +12,7 @@ This sample walks through the high-level steps for configuring a lab that runs a
     - Ubuntu Server 16.04 LTS
 
 1. Once the lab is created, connect to the template VM using SSH.  
+    1. Note: Do not check "Non-administrator accounts prevent the user from installing software or changing the configuration." setting when creating the lab.
 1. Then, install [Docker engine](https://docs.docker.com/engine/install/) which is used to run and manage Docker containers on the VM.  For this sample, you should follow the instructions for [installing the latest version of the Docker engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository).
 
 ### Build a custom Docker Fedora image
