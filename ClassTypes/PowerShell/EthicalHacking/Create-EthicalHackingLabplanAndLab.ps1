@@ -10,11 +10,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     Creates a Azure Lab Services lab plan and lab that can be used to create an ethical hacking lab.
 .PARAMETER Username
     The username for the local administrator account on the VM.
-.PARAMETER Username
+.PARAMETER Password
     The password for the local administrator account on the VM.   See https://learn.microsoft.com/azure/virtual-machines/windows/faq#what-are-the-password-requirements-when-creating-a-vm-  
 .PARAMETER Location
     Location name for Azure region where the lab plan and lab should reside.  Run `Get-AzLocation | Format-Table` to see all available.
-#>
+.PARAMETER ClassName
+    Name for class.  Must be a valid Azure Resource name.  Defaults to 'EthicalHacking'
+    #>
 
 [CmdletBinding()]
 param(
@@ -26,7 +28,10 @@ param(
     [securestring]$Password,
 
     [parameter(Mandatory = $true, HelpMessage = "Location for lab plan")]
-    [string]$Location
+    [string]$Location,
+
+    [parameter(Mandatory = $false, HelpMessage = "Name of the class")]
+    $ClassName = "EthicalHacking"
 )
 
 ###################################################################################################
@@ -56,16 +61,22 @@ trap {
 # Main execution block.
 #
 
-# Download AzLab module file, import, and then delete the file
-if (-not (Get-Module -ListAvailable -Name 'Az')) {
-    Import-Module Az -Force 
+if ((Get-Module -ListAvailable -Name 'Az.Accounts') -and
+    (Get-Module -ListAvailable -Name 'Az.Resources') -and
+    (Get-Module -ListAvailable -Name 'Az.LabServices')) {
+        Import-Module -Name Az.Accounts
+        Import-Module -Name Az.Resources
+        Import-Module -Name Az.LabServices
+}
+else {
+    Write-Error "Unable to run script, Az modules are missing.  Please install them via 'Install-Module -Name Az -Force' from an elevated command prompt"
 }
 
-$ClassName = "EthicalHacking"
+$ClassName = $ClassName.Trim().Replace(' ','-')
 
 
 # Configure parameter names
-$rgName     = "rg-$ClassName-$(Get-Random)"
+$rgName     = "rg-$ClassName-$(Get-Random)".ToLower()
 $labPlanName     = "lp-$ClassName$(Get-Random)"
 $labName    =  "$($ClassName)Lab"
 
@@ -98,9 +109,12 @@ $lab = New-AzLabServicesLab -Name $labName `
         -AdditionalCapabilityInstallGpuDriver Disabled `
         -AdminUserPassword $(ConvertTo-SecureString $Password -AsPlainText -Force) `
         -AdminUserUsername $UserName `
-        -AutoShutdownProfileShutdownOnDisconnect Disabled `
-        -AutoShutdownProfileShutdownOnIdle None `
-        -AutoShutdownProfileShutdownWhenNotConnected Disabled `
+        -AutoShutdownProfileShutdownOnDisconnect Enabled `
+        -AutoShutdownProfileDisconnectDelay $(New-Timespan) `
+        -AutoShutdownProfileShutdownOnIdle "LowUsage" `
+        -AutoShutdownProfileIdleDelay $(New-TimeSpan -Minutes 15) `
+        -AutoShutdownProfileShutdownWhenNotConnected Enabled `
+        -AutoShutdownProfileNoConnectDelay $(New-TimeSpan -Minutes 15) `
         -ConnectionProfileClientRdpAccess Public `
         -ConnectionProfileClientSshAccess None `
         -ConnectionProfileWebRdpAccess None `
