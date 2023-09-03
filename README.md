@@ -1,8 +1,8 @@
 # Lab Services
 
-This repository contains samples extending and improving the Azure Lab Services August 2022 update experience.  The goal is to have a place where everyone can find new and different ways to improve their experience with Lab Services and contribute\improve existing samples.  
+This repository contains samples extending the Azure Lab Services (post August 2022 update) experience.  
 
-If there is something that you want, feel free to create an issue.
+Contributions are welcome!  If there is something that you want, feel free to create an issue or pull request.
 
 ## Overview
 
