@@ -70,10 +70,16 @@ if ((Get-Module -ListAvailable -Name 'Az.Accounts') -and
 }
 else {
     Write-Error "Unable to run script, Az modules are missing.  Please install them via 'Install-Module -Name Az -Force' from an elevated command prompt"
+    exit -1
+}
+
+# Check password
+if ( -not ($Password -match "[A-Za-z0-9_@]{16,}")){
+    Write-Error "Password must be 16 characters long and only contain following characters: A-Z a-z 0-9 _ @ "
+    exit -1
 }
 
 $ClassName = $ClassName.Trim().Replace(' ','-')
-
 
 # Configure parameter names
 $rgName     = "rg-$ClassName-$(Get-Random)".ToLower()
@@ -107,7 +113,7 @@ $lab = New-AzLabServicesLab -Name $labName `
         -Location $Location `
         -LabPlanId $labPlan.Id.ToString() `
         -AdditionalCapabilityInstallGpuDriver Disabled `
-        -AdminUserPassword $(ConvertTo-SecureString $Password -AsPlainText -Force) `
+        -AdminUserPassword $Password `
         -AdminUserUsername $UserName `
         -AutoShutdownProfileShutdownOnDisconnect Enabled `
         -AutoShutdownProfileDisconnectDelay $(New-Timespan) `
