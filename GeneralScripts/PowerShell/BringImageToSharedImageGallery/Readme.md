@@ -1,10 +1,13 @@
 # Introduction
+
 This script is used to bring a custom image from an Azure virtual machine (VM) to an Azure Compute Gallery (formerly Shared Image Gallery).
 
 ## Prerequisites
-- Ensure that you have the [Azure PowerShell module](https://docs.microsoft.com/en-us/powershell/azure) installed.
 
-# Directions
+- Ensure that you have the [Azure PowerShell module](https://docs.microsoft.com/powershell/azure) installed.
+
+## Directions
+
 1. Open a PowerShell window.
 2. Run `BringImageToSharedImageGallery.ps1`.  You can either pass all the required parameters when you run the script.  Or, you can run the script without the parameters so that you are prompted as shown in the next bullet.
 3. When prompted, enter information about where the source VM resides and the shared image gallery where the custom image will be created.  Here are some helpful tips:
@@ -25,7 +28,8 @@ This script is used to bring a custom image from an Azure virtual machine (VM) t
     - If you select an existing image definition, the script will automatically create an image version that has the PatchVersion incremented.  For example, if the previous image version is 1.0.0, the new version is 1.0.1.
 
 For related information, refer to the following articles:
+
 - [Bring a custom image to Shared Image Gallery](https://docs.microsoft.com/azure/lab-services/upload-custom-image-shared-image-gallery)
 - [Shared Image Gallery overview](https://docs.microsoft.com/azure/virtual-machines/shared-image-galleries)
 - [Attach or detach a Shared Image Gallery](https://docs.microsoft.com/azure/lab-services/how-to-attach-detach-shared-image-gallery)
-- [Use a Shared Image Gallery](https://docs.microsoft.com/azure/lab-services/how-to-use-shared-image-gallery)
+- [Use an Azure Compute Gallery](https://docs.microsoft.com/azure/lab-services/how-to-use-shared-image-gallery)
