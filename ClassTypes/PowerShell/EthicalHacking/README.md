@@ -42,7 +42,9 @@ To create a lab using the following instructions, you must have
 This script will help prepare your template virtual machine for a ethical hacking class.  Script will:
 
 - Enable Hyper-V.
-- Create a Hyper-V virtual machine with a [Kali Linux](https://www.kali.org/).  Kali is a Linux distribution that includes tools for penetration testing and security auditing.  
+- Install [7-Zip](https://www.7-zip.org/download.html) to extra Kali Linux Hyper-V disk.
+- Create a Hyper-V virtual machine with a [Kali Linux](https://www.kali.org/).  Kali is a Linux distribution that includes tools for penetration testing and security auditing.
+- Install [Starwind V2V Converter](https://www.starwindsoftware.com/download-starwind-products#download) to convert Metasploitable VMWare disk to Hyper-V disk.
 - Create a Hyper-V virtual machine with a [Metasploitable](https://github.com/rapid7/metasploitable3) image is created.  The Rapid7 Metasploitable image is an image purposely configured with security vulnerabilities. You'll use this image to test and find issues.
 
 ### Prerequisites
@@ -69,3 +71,6 @@ This script will help prepare your template virtual machine for a ethical hackin
     > The script may ask you to restart the machine and re-run it.  A note that the script is completed will show in the PowerShell window when no further action is needed.
 
 1. Run `Setup-EthicalHacking.ps1`
+
+     > [!WARNING]
+     > Use `Setup-EthicalHacking.ps1 -Force` will cause any software to be installed silently.  By using the Force switch you are automatically accepting the terms for the installed software.  

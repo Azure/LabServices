@@ -12,10 +12,10 @@ This script prepares a Windows Server machine for an ethical hacking class.  It 
 .PARAMETER SwitchName
 The name of the virtual switch to which the virtual machines should be connected.  By default, this script uses the switch created when ../HyperV/SetupForNestedVirtualization.ps1 is executed.
 #>
-
 [CmdletBinding()]
 param(
-    [string]$SwitchName = "LabServicesSwitch"
+    [string]$SwitchName = "LabServicesSwitch",
+    [Parameter(Mandatory=$false)][switch]$Force = $false
 )
 
 ###################################################################################################
@@ -39,6 +39,9 @@ $Error.Clear()
 # Configure strict debugging.
 Set-PSDebug -Strict
 
+# Configure variables for ShouldContinue prompts
+$YesToAll = $Force
+$NoToAll = $false
 ###################################################################################################
 #
 # Handle all errors in this script.
@@ -262,23 +265,59 @@ function Convert-VdmkToVhdx {
     
     Write-Host "Finding Starwind V2V Converter executable"
     $swcExePath = Join-Path $env:ProgramFiles 'StarWind Software\StarWind V2V Converter\V2V_ConverterConsole.exe'
-    if (-not (Test-Path $swcExePath)){
-        Write-Host "Installing Starwind V2V Converter"
-        #Main download page is at https://www.starwindsoftware.com/download-starwind-products#download, choose 'Starwind V2V Converter'.
-        Invoke-Process -FileName $(Get-WebFile -DownloadUrl 'https://www.starwindsoftware.com/tmplink/starwindconverter.exe' -TargetFilePath $(Join-Path $env:TEMP 'starwindconverter.exe')) -Arguments '/verysilent'
+    if (-not $( `
+        (Test-Path $swcExePath) -or `
+        $PSCmdlet.ShouldContinue("Are you sure you want to install StarWind V2V Converter?  Download is available at https://www.starwindsoftware.com/download-starwind-products#download.", `
+        "Installing Starwind V2V Converter.", [ref] $YesToAll, [ref] $NoToAll))
+    ){
+            Write-Error "Unable to find or download $swcExePath"
+            exit -1
     }
 
+    Write-Host "Installing Starwind V2V Converter"
+    #Main download page is at https://www.starwindsoftware.com/download-starwind-products#download, choose 'Starwind V2V Converter'.
+    Invoke-Process -FileName $(Get-WebFile -DownloadUrl 'https://www.starwindsoftware.com/tmplink/starwindconverter.exe' -TargetFilePath $(Join-Path $env:TEMP 'starwindconverter.exe')) -Arguments '/verysilent'
+    
     #convert vmdk file
     Write-Host "Converting '$VmdkFilePath' to '$VhdxFilePath'.  Warning: This may take several minutes."
     Invoke-Process -FileName $swcExePath -Arguments "convert in_file_name=""$VmdkFilePath"" out_file_name=""$VhdxFilePath"" out_file_type=ft_vhdx_thin"
 }
 
 ### Kali Linux Functions ###
+
+<#
+.SYNOPSIS 
+Downloads and installs 7-zip.  Download page is https://www.7-zip.org/download.html.
+#>
+function Get-7ZipExePath {
+    [CmdletBinding()]
+    param ()
+    $sevenZipExe = Join-Path $env:ProgramFiles '7-zip\7z.exe'
+
+    if (-not (Test-Path $sevenZipExe)){
+        if ($PSCmdlet.ShouldContinue('Installing Z-Zip','Are you sure you want to install 7-Zip.  License available at https://www.7-zip.org/license.txt.','Install 7-Zip.', [ref] $YesToAll, [ref] $NoToAll)) {
+            Write-Host "Downloading and installing 7-Zip to extract Kali Linux compressed files."
+            #Download page is https://www.7-zip.org/download.html.
+            $sevenZipInstallerPath = Get-WebFile -DownloadUrl 'https://www.7-zip.org/a/7z1900-x64.msi' -TargetFilePath $(Join-Path $env:TEMP '7zip.msi') -SkipIfAlreadyExists $true
+    
+            Invoke-Process -FileName "msiexec.exe" -Arguments "/i $sevenZipInstallerPath /quiet"
+        }else{
+            Write-Error "7-Zip not installed."
+            exit -1
+        }
+    }
+
+    return $sevenZipExe
+}
+
 <#
 .SYNOPSIS
 Downloads Kali Linux Hyper-V image and returns the path to the virtual machine configuration information file.
 #>
 function Get-KaliLinuxDisk {
+    [CmdletBinding()]
+    param()
+
     $_kaliLinuxVersion = '2023.3'
     $_kaliLinuxBaseFileName = "kali-linux-$($_kaliLinuxVersion)a-hyperv-amd64"
     $_kaliLinuxVhdxFileName = "$($_kaliLinuxBaseFileName).vhdx"
@@ -296,16 +335,21 @@ function Get-KaliLinuxDisk {
     #Download page is https://www.kali.org/get-kali/#kali-virtual-machines
     #Docs at https://www.kali.org/docs/virtualization/import-premade-hyperv/
     $_kaliDownloadedFileName = "$_kaliLinuxBaseFileName.7z"
-    $kaliLinux7ZipFile = Get-WebFile -DownloadUrl "https://cdimage.kali.org/kali-$_kaliLinuxVersion/$_kaliDownloadedFileName" -TargetFilePath $(Join-Path $_kaliLinuxExtractedFilesFolder $_kaliDownloadedFileName) -SkipIfAlreadyExists $true
- 
-    $sevenZipExe = Join-Path $env:ProgramFiles '7-zip\7z.exe'
-    if (-not (Test-Path $sevenZipExe)) {
-        Write-Host "Downloading and installing 7-Zip to extract Kali Linux compressed files."
-        #Download page is https://www.7-zip.org/download.html.
-        $sevenZipInstallerPath = Get-WebFile -DownloadUrl 'https://www.7-zip.org/a/7z1900-x64.msi' -TargetFilePath $(Join-Path $env:TEMP '7zip.msi') -SkipIfAlreadyExists $true
-  
-        Invoke-Process -FileName "msiexec.exe" -Arguments "/i $sevenZipInstallerPath /quiet"
+    $_kaliDownloadedFilePath = $(Join-Path $_kaliLinuxExtractedFilesFolder $_kaliDownloadedFileName)
+
+    if (-not $(`
+        (Test-Path $_kaliDownloadedFilePath) -or `
+        $PSCmdlet.ShouldContinue(
+        "Are you sure you want to download $($_kaliLinuxVhdxFileName)?  Eula is at https://www.kali.org/docs/policy/eula/.  Documentation is at https://www.kali.org/docs/virtualization/import-premade-hyperv/", `
+        "Download Kali Linux disk.", [ref] $YesToAll, [ref] $NoToAll))
+    ){
+            Write-Error "Unable to find or download $_kaliDownloadedFileName"
+            exit -1
     }
+
+    $kaliLinux7ZipFile = Get-WebFile -DownloadUrl "https://cdimage.kali.org/kali-$_kaliLinuxVersion/$_kaliDownloadedFileName" -TargetFilePath $_kaliDownloadedFilePath -SkipIfAlreadyExists $true
+ 
+    $sevenZipExe = Get-7ZipExePath
 
     Write-Host "Extracting Kali Linux files from compressed file."
     if ($null -eq (Get-ChildItem "$_kaliLinuxExtractedFilesFolder\$_kaliLinuxVhdxFileName" -Recurse | Select-Object -expand FullName)) {
@@ -355,14 +399,30 @@ function New-KaliLinuxVM {
 Downloads Metasploitable image files and converts disk file to Hyper-V virtual hard disk file.  Path to converted disk file is returned.
 #>
 function Get-MetasploitableDisk {
+    [CmdletBinding()]
+    param()
+
     $vhdxPath = "$env:PUBLIC\Documents\Hyper-V\Virtual hard disks\Metasploitable.vhdx"
 
     if (Test-Path ($vhdxPath)) { return $vhdxPath }
 
     Write-Host "Downloading Metasploitable image compressed file. "
     $_metasploitableLinuxExtractPath = Join-Path $env:Temp 'MetasploitableLinux'
+    $_metasploitableLinuxZipFile = 'metasploitable-linux-2.0.0.zip'
+    $_metasploitableLinuxZipPath = $(Join-Path $_metasploitableLinuxExtractPath $_metasploitableLinuxZipFile)
+
+    if (-not $(`
+        (Test-Path $_metasploitableLinuxZipPath) -or `
+        $PSCmdlet.ShouldContinue(
+            "Are you sure you want to download $($_metasploitableLinuxZipFile)?  Download page is https://information.rapid7.com/download-metasploitable-2017.html.  Documentation is available at https://docs.rapid7.com/metasploit/metasploitable-2/.", `
+            "Download Rapid7 Metasploitable VM.", [ref] $YesToAll, [ref] $NoToAll))
+    ){
+        Write-Error "Unable to find or download $_metasploitableLinuxZipPath."
+        exit -1
+    }
+
     #Download page is https://information.rapid7.com/download-metasploitable-2017.html
-    $metasploitableZipFile = Get-WebFile -DownloadUrl 'http://downloads.metasploit.com/data/metasploitable/metasploitable-linux-2.0.0.zip' -TargetFilePath $(Join-Path $_metasploitableLinuxExtractPath 'metasploitable-linux-2.0.0.zip') -SkipIfAlreadyExists $true
+    $metasploitableZipFile = Get-WebFile -DownloadUrl 'http://downloads.metasploit.com/data/metasploitable/metasploitable-linux-2.0.0.zip' -TargetFilePath $_metasploitableLinuxZipPath  -SkipIfAlreadyExists $true
  
     Write-Host "Extracting Metasploitable image files."
     if ($null -eq (Get-ChildItem "$_metasploitableLinuxExtractPath\*.vmdk" -Recurse | Select-Object -expand FullName)) {
