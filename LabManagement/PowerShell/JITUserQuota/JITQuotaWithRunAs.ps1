@@ -1,3 +1,6 @@
+# WARNING: The execution of RunAs accounts are retired as of September 30, 2023.
+# See https://learn.microsoft.com/azure/automation/migrate-run-as-accounts-managed-identity?tabs=sa-managed-identity for details.
+
 # Lets stop the script for any errors
 $ErrorActionPreference = "Stop"
 
