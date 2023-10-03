@@ -52,6 +52,12 @@ EOF
 
     sed -i "s/allowed_users=console/allowed_users=anybody/" /etc/X11/Xwrapper.config
 
+    # Optimizes GNOME desktop performance over RDP. See https://github.com/neutrinolabs/xrdp/issues/1483.
+    echo "${BLUE}Optimize RDP settings for GNOME desktop...${RESET}"
+    sed -i 's/#\s*tcp_send_buffer_bytes\s*=\s*32768/tcp_send_buffer_bytes=4194304/' /etc/xrdp/xrdp.ini
+    sed -i 's/max_bpp=32/max_bpp=16/g' /etc/xrdp/xrdp.ini
+    sysctl -w net.core.wmem_max=8388608
+
     /etc/init.d/xrdp restart
 
     sleep 2
