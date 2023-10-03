@@ -25,7 +25,6 @@ setup_color() {
     fi
 }
 
-
 main() {
 
     setup_color
@@ -33,7 +32,7 @@ main() {
     echo "${BLUE}Adding x2go PPA repo...${RESET}"
 
     apt-get install -y software-properties-common
-
+    
     add-apt-repository -y ppa:x2go/stable
 
     echo "${BLUE}Updating apt package repository...${RESET}"
@@ -44,7 +43,25 @@ main() {
 
     echo "${BLUE}Installing MATE desktop and x2go server...${RESET}"
 
-    apt-get install -y ubuntu-mate-desktop x2goserver x2goserver-xsession x2gomatebindings
+    DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-mate-desktop
+
+    apt-get install -y x2goserver x2goserver-xsession 
+
+    currentversion=$(grep '^VERSION_ID' /etc/os-release)
+
+    # The x2gomatebindings aren't available for 22.04/23.04. If you attempt to install them, you'll get this error:
+    # Unable to locate package x2gomatebindings
+    # For list of versions that x2gomatebindings are available for, see: https://launchpad.net/~x2go/+archive/ubuntu/stable
+    # For more info about x2gomatebindings, see: https://wiki.x2go.org/doku.php/wiki:advanced:desktopbindings#:~:text=X2Go%20Session.-,Desktop%20Bindings%20for%20MATE%20(v1.x),-X2Go%20bindings%20for
+    targetversion="20.04, 18.04"
+    
+    case "$currentversion" in
+        *"$targetversion"*)  
+
+        echo "${BLUE}Installing x2go MATE bindings...${RESET}"
+
+        apt-get install -y x2gomatebindings
+    esac 
 
     echo "${GREEN}MATE desktop and x2go successfully installed!${RESET}"
 
@@ -57,8 +74,6 @@ main() {
     #   - cloud-init runs during a VM's initial boot process to set up the VM
     # The workaround is to remove netplan and disable the systemd networkd daemon so that instead the Network Manager daemon and ifupdown are used for networking (Note: MATE
     # prefers using Network Manager).  See the following bug: https://bugs.launchpad.net/ubuntu/+source/cloud-init/+bug/1832381.
-
-    currentversion=$(grep '^VERSION_ID' /etc/os-release)
     targetversion="18.04"
 
     case "$currentversion" in
