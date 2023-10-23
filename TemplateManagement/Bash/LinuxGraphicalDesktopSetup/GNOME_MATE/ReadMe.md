@@ -1,12 +1,12 @@
 # Introduction
 
-These scripts install GNOME/Xrdp and MATE/X2Go graphical desktop environments on Ubuntu.  The scripts provide different configuration steps depending on the version, graphical desktop environment, and remote desktop server technology being used:
-- Ubuntu 18.04 LTS to install GNOME/Xrdp and MATE/X2Go.
-- Ubuntu 20.04/21.04/22.04 LTS to install GNOME/Xrdp.
-- Ubuntu 20.04/22.04 LTS to install MATE/X2Go.
+These scripts install GNOME/Xrdp and MATE/X2Go graphical desktop environments on Ubuntu.  The scripts provide different configuration steps depending on the version, graphical desktop environment, and remote desktop server technology being used to optimize desktop connection performance:
+- Ubuntu 18.04 LTS => Installs GNOME/Xrdp and MATE/X2Go.
+- Ubuntu 20.04/21.04/22.04 LTS => Installs GNOME/Xrdp.
+- Ubuntu 20.04/22.04 LTS => Installs MATE/X2Go.
 
 > [!NOTE]
-> The Ubuntu 18.04 and 21.04 LTS images are *no* longer available in the Azure marketplace as a free image provided by Canonical.  Azure Labs only supports using free marketplace images. The instructions/scripts included for Ubuntu 18.04/21.04 LTS are only applicable to custom lab images that were previously [saved to a Compute Gallery](https://learn.microsoft.com/azure/lab-services/approaches-for-custom-image-creation#save-a-custom-image-from-a-lab-template-virtual-machine), or to custom images that are imported from a [physical lab environment](https://learn.microsoft.com/azure/lab-services/approaches-for-custom-image-creation#bring-a-custom-image-from-a-vhd-in-your-physical-lab-environment).  Otherwise, we recommend using Ubuntu 20.04 or 22.04 LTS which are available as free marketplace images.
+> The Ubuntu 18.04 and 21.04 LTS images are *no* longer available in the Azure marketplace as a free image provided by Canonical.  Azure Labs only supports using free marketplace images. The instructions/scripts included for Ubuntu 18.04/21.04 LTS are only applicable to custom lab images that were previously [saved to a Compute Gallery](https://learn.microsoft.com/azure/lab-services/approaches-for-custom-image-creation#save-a-custom-image-from-a-lab-template-virtual-machine), or to use custom images that are imported from a [physical lab environment](https://learn.microsoft.com/azure/lab-services/approaches-for-custom-image-creation#bring-a-custom-image-from-a-vhd-in-your-physical-lab-environment).  Otherwise, we recommend using Ubuntu 20.04 or 22.04 LTS which are available as free marketplace images.
 
 If you are using a custom image with Ubuntu 18.04 LTS, the GNOME and MATE graphical desktop environments have a networking conflict with the Azure Linux Agent which is needed for the VMs to work properly in Azure Labs.  For example, this networking conflict will cause lab creation to fail when attempting to provision the template VM.  Likewise, it will cause publish to hang when attempting to provision the student VMs.  To successfully use use GNOME or MATE on lab VMs, the below scripts include additional steps that are required to fix this networking conflict with Ubuntu 18.04 LTS.  This issue is being tracked by the following Canonical bug:  <https://bugs.launchpad.net/ubuntu/+source/cloud-init/+bug/1832381>.
 
