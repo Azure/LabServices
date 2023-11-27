@@ -30,25 +30,26 @@ main() {
 
     setup_color
 
-    
     echo "${BLUE}Adding x2go PPA repo...${RESET}"
 
     apt-get install -y software-properties-common
 
     add-apt-repository -y ppa:x2go/stable
 
-
     echo "${BLUE}Updating apt package repository...${RESET}"
 
     apt-get update
 
     sleep 2
-
     
     echo "${BLUE}Intalling xubuntu desktop and x2go server...${RESET}"
 
-    apt-get install -y xubuntu-desktop x2goserver x2goserver-xsession
+    DEBIAN_FRONTEND=noninteractive apt-get install -y xubuntu-desktop
 
+    echo "${GREEN}Xubuntu desktop and x2go successfully installed!${RESET}"
+
+    # Install x2goserver and x2goserver-xsession packages
+    apt-get install -y x2goserver x2goserver-xsession
 
     echo "${GREEN}Xubuntu desktop and x2go successfully installed!${RESET}"
 }

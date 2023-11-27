@@ -30,13 +30,11 @@ main() {
 
     setup_color
 
-    
     echo "${BLUE}Adding x2go PPA repo...${RESET}"
 
     apt-get install -y software-properties-common
 
     add-apt-repository -y ppa:x2go/stable
-
 
     echo "${BLUE}Updating apt package repository...${RESET}"
 
@@ -44,11 +42,13 @@ main() {
 
     sleep 2
 
-    
     echo "${BLUE}Intalling XFCE4 desktop and x2go server...${RESET}"
 
-    apt-get install -y xfce4 x2goserver x2goserver-xsession
+    sudo DEBIAN_FRONTEND=noninteractive apt-get -y install xfce4
+    sudo apt install xfce4-session
 
+    # Install x2goserver and x2goserver-xsession packages
+    apt-get install -y x2goserver x2goserver-xsession
 
     echo "${GREEN}XFCE4 desktop and x2go successfully installed!${RESET}"
 }
