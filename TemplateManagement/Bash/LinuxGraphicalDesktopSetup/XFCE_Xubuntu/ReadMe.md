@@ -1,10 +1,15 @@
 # Introduction
 
-These scripts install the X2Go server for the selected Linux desktop environment (XFCE4 or Xubuntu) on your Linux lab VM.  
+These scripts install XFCE/X2Go and xUbuntu/X2Go graphical desktop environments on Ubuntu.
+
+> [!NOTE]
+> The Ubuntu 16.04, 18.04 and 21.04 LTS images are *no* longer available in the Azure marketplace as a free image provided by Canonical.  Azure Labs only supports using free marketplace images. The instructions/scripts included for Ubuntu 16.04/18.04/21.04 LTS are only applicable to custom lab images that were previously [saved to a Compute Gallery](https://learn.microsoft.com/azure/lab-services/approaches-for-custom-image-creation#save-a-custom-image-from-a-lab-template-virtual-machine), or to custom images that are imported from a [physical lab environment](https://learn.microsoft.com/azure/lab-services/approaches-for-custom-image-creation#bring-a-custom-image-from-a-vhd-in-your-physical-lab-environment).  Otherwise, we recommend using Ubuntu 20.04 or 22.04 LTS which are available as free marketplace images.
 
 ## Ubuntu
 
-These scripts work for both 16.04 LTS and 18.04 LTS.  They will likely work for other versions, but are untested.
+These scripts have been tested with:
+
+    - Ubuntu 16.04/18.04/20.04/21.04/22.04 LTS
 
 ## Configuring X2Go
 
@@ -32,7 +37,6 @@ sudo sh -c "$(curl -fsSL https://raw.githubusercontent.com/Azure/LabServices/mai
 ```bash
 sudo sh -c "$(curl -fsSL https://raw.githubusercontent.com/Azure/LabServices/main/TemplateManagement/Bash/LinuxGraphicalDesktopSetup/XFCE_Xubuntu/Ubuntu/x2go-xubuntu.sh)"
 ```
-
 ### Install X2Go Client and Create a Session
 
 Once you have the X2Go\Xrdp server installed on your template VM (using the scripts above), you'll use the X2Go\RDP client to remotely connect to the VM. The X2Go\RDP Client is the application that allows you to connect to a remote server and display a graphical desktop on your local machine.
@@ -40,3 +44,11 @@ Once you have the X2Go\Xrdp server installed on your template VM (using the scri
 Read the following article:
 
 - [Connect to student VM using X2Go](https://docs.microsoft.com/azure/lab-services/how-to-use-remote-desktop-linux-student#connect-to-the-student-vm-using-x2go)
+
+After running the script, you may also want to disable compositing in xUbuntu desktop to optimize performance over a remote desktop connection.  For example, use the below script to disable compositing.  This script requires an active X11 display session, so you will need to run the script via a terminal within your xUbuntu graphical desktop environment by connecting to the VM using X2Go:
+
+```bash
+xfconf-query -c xfwm4 -p /general/use_compositing -s false
+```
+
+Once you've disabled compositing and restarted the VM, you should notice a significant performance improvement when using a remote desktop connection.
