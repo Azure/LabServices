@@ -14,8 +14,8 @@ The name of the virtual switch to which the virtual machines should be connected
 #>
 [CmdletBinding()]
 param(
-    [string]$SwitchName = "LabServicesSwitch",
-    [Parameter(Mandatory=$false)][switch]$Force = $false
+    [Parameter(Mandatory = $false)][string]$SwitchName,
+    [Parameter(Mandatory = $false)][switch]$Force = $false
 )
 
 ###################################################################################################
@@ -259,19 +259,19 @@ File file path where vhdx file should be created.
 function Convert-VdmkToVhdx {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory=$true)][string] $VmdkFilePath,
-        [Parameter(Mandatory=$true)][string] $VhdxFilePath
+        [Parameter(Mandatory = $true)][string] $VmdkFilePath,
+        [Parameter(Mandatory = $true)][string] $VhdxFilePath
     )
     
     Write-Host "Finding Starwind V2V Converter executable"
     $swcExePath = Join-Path $env:ProgramFiles 'StarWind Software\StarWind V2V Converter\V2V_ConverterConsole.exe'
     if (-not $( `
-        (Test-Path $swcExePath) -or `
-        $PSCmdlet.ShouldContinue("Are you sure you want to install StarWind V2V Converter?  Download is available at https://www.starwindsoftware.com/download-starwind-products#download.", `
-        "Installing Starwind V2V Converter.", [ref] $YesToAll, [ref] $NoToAll))
-    ){
-            Write-Error "Unable to find or download $swcExePath"
-            exit -1
+            (Test-Path $swcExePath) -or `
+                $PSCmdlet.ShouldContinue("Are you sure you want to install StarWind V2V Converter?  Download is available at https://www.starwindsoftware.com/download-starwind-products#download.", `
+                    "Installing Starwind V2V Converter.", [ref] $YesToAll, [ref] $NoToAll))
+    ) {
+        Write-Error "Unable to find or download $swcExePath"
+        exit -1
     }
 
     Write-Host "Installing Starwind V2V Converter"
@@ -280,7 +280,10 @@ function Convert-VdmkToVhdx {
     
     #convert vmdk file
     Write-Host "Converting '$VmdkFilePath' to '$VhdxFilePath'.  Warning: This may take several minutes."
-    Invoke-Process -FileName $swcExePath -Arguments "convert in_file_name=""$VmdkFilePath"" out_file_name=""$VhdxFilePath"" out_file_type=ft_vhdx_thin"
+    Invoke-Process -FileName $swcExePath -Arguments "convert in_file_name=""$VmdkFilePath"" out_file_name=""$VhdxFilePath"" out_file_type=ft_vhdx_growable"
+    if (-not $(Test-Path $VhdxFilePath)) {
+        Write-Error "Error creating vhdx file '$VhdxFFile'."
+    }
 }
 
 ### Kali Linux Functions ###
@@ -294,14 +297,15 @@ function Get-7ZipExePath {
     param ()
     $sevenZipExe = Join-Path $env:ProgramFiles '7-zip\7z.exe'
 
-    if (-not (Test-Path $sevenZipExe)){
-        if ($PSCmdlet.ShouldContinue('Installing Z-Zip','Are you sure you want to install 7-Zip.  License available at https://www.7-zip.org/license.txt.','Install 7-Zip.', [ref] $YesToAll, [ref] $NoToAll)) {
+    if (-not (Test-Path $sevenZipExe)) {
+        if ($PSCmdlet.ShouldContinue('Installing Z-Zip', 'Are you sure you want to install 7-Zip.  License available at https://www.7-zip.org/license.txt.', 'Install 7-Zip.', [ref] $YesToAll, [ref] $NoToAll)) {
             Write-Host "Downloading and installing 7-Zip to extract Kali Linux compressed files."
             #Download page is https://www.7-zip.org/download.html.
             $sevenZipInstallerPath = Get-WebFile -DownloadUrl 'https://www.7-zip.org/a/7z1900-x64.msi' -TargetFilePath $(Join-Path $env:TEMP '7zip.msi') -SkipIfAlreadyExists $true
     
             Invoke-Process -FileName "msiexec.exe" -Arguments "/i $sevenZipInstallerPath /quiet"
-        }else{
+        }
+        else {
             Write-Error "7-Zip not installed."
             exit -1
         }
@@ -338,13 +342,13 @@ function Get-KaliLinuxDisk {
     $_kaliDownloadedFilePath = $(Join-Path $_kaliLinuxExtractedFilesFolder $_kaliDownloadedFileName)
 
     if (-not $(`
-        (Test-Path $_kaliDownloadedFilePath) -or `
-        $PSCmdlet.ShouldContinue(
-        "Are you sure you want to download $($_kaliLinuxVhdxFileName)?  Eula is at https://www.kali.org/docs/policy/eula/.  Documentation is at https://www.kali.org/docs/virtualization/import-premade-hyperv/", `
-        "Download Kali Linux disk.", [ref] $YesToAll, [ref] $NoToAll))
-    ){
-            Write-Error "Unable to find or download $_kaliDownloadedFileName"
-            exit -1
+            (Test-Path $_kaliDownloadedFilePath) -or `
+                $PSCmdlet.ShouldContinue(
+                "Are you sure you want to download $($_kaliLinuxVhdxFileName)?  Eula is at https://www.kali.org/docs/policy/eula/.  Documentation is at https://www.kali.org/docs/virtualization/import-premade-hyperv/", `
+                    "Download Kali Linux disk.", [ref] $YesToAll, [ref] $NoToAll))
+    ) {
+        Write-Error "Unable to find or download $_kaliDownloadedFileName"
+        exit -1
     }
 
     $kaliLinux7ZipFile = Get-WebFile -DownloadUrl "https://cdimage.kali.org/kali-$_kaliLinuxVersion/$_kaliDownloadedFileName" -TargetFilePath $_kaliDownloadedFilePath -SkipIfAlreadyExists $true
@@ -412,11 +416,11 @@ function Get-MetasploitableDisk {
     $_metasploitableLinuxZipPath = $(Join-Path $_metasploitableLinuxExtractPath $_metasploitableLinuxZipFile)
 
     if (-not $(`
-        (Test-Path $_metasploitableLinuxZipPath) -or `
-        $PSCmdlet.ShouldContinue(
-            "Are you sure you want to download $($_metasploitableLinuxZipFile)?  Download page is https://information.rapid7.com/download-metasploitable-2017.html.  Documentation is available at https://docs.rapid7.com/metasploit/metasploitable-2/.", `
-            "Download Rapid7 Metasploitable VM.", [ref] $YesToAll, [ref] $NoToAll))
-    ){
+            (Test-Path $_metasploitableLinuxZipPath) -or `
+                $PSCmdlet.ShouldContinue(
+                "Are you sure you want to download $($_metasploitableLinuxZipFile)?  Download page is https://information.rapid7.com/download-metasploitable-2017.html.  Documentation is available at https://docs.rapid7.com/metasploit/metasploitable-2/.", `
+                    "Download Rapid7 Metasploitable VM.", [ref] $YesToAll, [ref] $NoToAll))
+    ) {
         Write-Error "Unable to find or download $_metasploitableLinuxZipPath."
         exit -1
     }
@@ -467,23 +471,28 @@ function New-MetasploitableVm {
 #
 
 try {
-    Write-Host "Verifying server operating system."
-    if (-not (Get-RunningServerOperatingSystem)) { 
-        Write-Error "This script is designed to run on Windows Server." 
-    }
-
     Write-Host "Verifying running as administrator."
     if (-not (Get-RunningAsAdministrator)) { 
         Write-Error "Please re-run this script as Administrator." 
     }
-
+    
     Write-Host "Verifying Hyper-V enabled."
-    if ($null -eq $(Get-WindowsFeature -Name 'Hyper-V')) {
-        Write-Error "This script only applies to machines that can run Hyper-V."
-    }
-    if (([Microsoft.Windows.ServerManager.Commands.InstallState]::Installed -ne $(Get-WindowsFeature -Name 'Hyper-V' | Select-Object -ExpandProperty 'InstallState')) -or
+    if (Get-RunningServerOperatingSystem) { 
+        if (([Microsoft.Windows.ServerManager.Commands.InstallState]::Installed -ne $(Get-WindowsFeature -Name 'Hyper-V' | Select-Object -ExpandProperty 'InstallState')) -or
         ($null -eq (Get-Command Get-VMSwitch -errorAction SilentlyContinue))) {
-        Write-Error "This script only applies to machines that have Hyper-V feature and tools installed.  Try '../HyperV/SetupForNestedVirtualization.ps1 to install."
+            Write-Error "This script only applies to machines that have Hyper-V feature and tools installed.  Try '../HyperV/SetupForNestedVirtualization.ps1 to install."
+        }
+        if ([string]::IsNullOrEmpty($SwitchName)){
+            $SwitchName = "LabServicesSwitch"
+        }
+    }
+    else {
+        if ("Enabled" -ne $(Get-WindowsOptionalFeature -FeatureName Microsoft-Hyper-V-All -Online | Select-Object -ExpandProperty State)) {
+            Write-Error "This script only applies to machines that have Hyper-V enabled. Try '../HyperV/SetupForNestedVirtualization.ps1 to install."
+        }
+        if ([string]::IsNullOrEmpty($SwitchName)){
+            $SwitchName = "Default Switch"
+        }
     }
 
     Write-Host "Verifying virtual machine switch '$SwitchName' exists."
