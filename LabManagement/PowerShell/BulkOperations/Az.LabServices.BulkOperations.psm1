@@ -26,21 +26,18 @@ function Validate-SkuName {
     $subscriptionId = (Get-AzContext).Subscription.Id
     $allSkus = (Invoke-AzRestMethod -Uri https://management.azure.com/subscriptions/$subscriptionId/providers/Microsoft.LabServices/skus?api-version=2022-08-01 | Select-Object -Property "Content" -ExpandProperty Content | ConvertFrom-Json).value
 
-    # We need to match against the "name" field - this matches things like:
-    #    "Basic" and "Fsv2_2_4GB_128_S_SSD"
-    $size = $allSKus | Where-Object {$_.name -ieq $Sku} | Select-Object -First 1
+    # Match the provided sku by either the name or the size property.
+    # For example, the name of the sku is "Basic" and the size is "Fsv2_2_4GB_128_S_SSD"
+    $matchedSku = $allSKus | Where-Object {$_.name -ieq $Sku -or $_.size -ieq $Sku} | Select-Object -First 1
 
-    if ($size) {
-        # If we have a 'classic' size, we need to format slightly differently
-        if ($size.tier -ieq "Classic") {
-            return "$($size.tier)_$($size.size)"
-        }
-        else {
-            return $size.name
-        }
+    Write-Host "Validating provided VM size. Sku: $($Sku)."
+    if ($matchedSku) {
+        return "$($matchedSku.tier)_$($matchedSku.size)"
     }
     else {
-        Write-Error "Size '$Sku' not currently available in Azure Lab Services"
+        #write out all valid skus to log file
+        $allSkus | Out-File -FilePath ".\AzLabBulkDeploySkuList.txt"
+        Write-Error "Specified VM size '$Sku' is invalid.  Verify that the value provided is a valid VM SKU name or size.  See .\AzLabBulkDeploySkuList.txt for list of valid SKUs for your subscription."
     }
 }
 
@@ -74,7 +71,7 @@ function Import-LabsCsv {
         # Add alias for Lab AccountName
         $labs | Where-Object {$_.LabAccountName} | Add-Member -MemberType AliasProperty -Name LabPlanName -Value LabAccountName -PassThru
     }
-    # Validate that if a resource group\lab account appears more than once in the csv, that it also has the same SharedGalleryId and EnableSharedGalleryImages values.
+    # Validate that if a resource group\lab plan appears more than once in the csv, that it also has the same SharedGalleryId and EnableSharedGalleryImages values.
     $plan = $labs | Select-Object -Property ResourceGroupName, LabPlanName, SharedGalleryId, EnableSharedGalleryImages, Tags | Sort-Object -Property ResourceGroupName, LabPlanName
     $planNames = $plan | Select-Object -Property ResourceGroupName, LabPlanName -Unique
   
@@ -107,6 +104,20 @@ function Import-LabsCsv {
         # First thing, we need to save the original properties in case they're needed later (for export)
         Add-Member -InputObject $_ -MemberType NoteProperty -Name OriginalProperties -Value $_.PsObject.Copy()
 
+        if (Get-Member -InputObject $_ -Name TemplateVmState) {
+            if ($_.TemplateVmState -and ($_.TemplateVmState -ieq "Disabled")) {
+                $_.TemplateVmState  = "Image"
+            }
+            else {
+                $_.TemplateVmState  = "TemplateVM"
+            }
+         }
+         else {
+            Write-Warning "Missing lab's template VM value - defaulting to 'Enabled'.  Column name: TemplateVM."
+            Add-Member -InputObject $_ -MemberType NoteProperty -Name TemplateVmState -Value "Enabled"
+            $_.TemplateVmState  = "TemplateVM"
+        }
+        
         # Validate that the name is good, before we start creating labs
         if (-not ($_.LabName -match "^[a-zA-Z0-9_, '`"!|-]*$")) {
             Write-Error "Lab Name '$($_.LabName)' can't contain special characters..."
@@ -125,13 +136,44 @@ function Import-LabsCsv {
             }
         }
 
-        # Checking to ensure the user has changed the example username/passwork in CSV files
-        if ($_.UserName -and ($_.UserName -ieq "test0000")) {
+        # Image and lab connection set up
+        if ($_.ImageName) {
+            Set-LabImageProperties -Lab $_
+            if ($_.ImageOSType) {
+                # The RDP/SSH connection properties are based on the image's OS type
+                Set-LabConnectionProperties -Lab $_
+            }
+            else {
+                Write-Error "Unable to determine if lab's image is Linux or Windows to set RDP/SSH connection properties. Lab: $($_.LabName)."
+            }
+        }
+        else {
+            Write-Error "ImageName must provide valid lab image name."
+        }
+
+        # Checking to ensure the user has changed the example username/password in CSV files for the admin and non-admin credentials.
+        # Note that the non-admin credentials are optional in the csv file.
+        if ($_.UserName -and ($_.UserName -ieq "testadmin")) {
             Write-Warning "Lab $($_.LabName) is using the default UserName from the example CSV, please update it for security reasons"
         }
-        if ($_.Password -and ($_.Password -ieq "Test00000000")) {
+        if ($_.Password -and ($_.Password -ieq "TestAdmin00000000")) {
             Write-Warning "Lab $($_.LabName) is using the default Password from the example CSV, please update it for security reasons"
         }
+
+        if ((Get-Member -InputObject $_ -Name 'NonAdminUserName') -and ($_.NonAdminUserName)) {
+            if ($_.NonAdminUserName -and ($_.UserName -ieq "testnonadmin")) {
+                Write-Warning "Lab $($_.LabName) is using the default NonAdminUserName from the example CSV, please update it for security reasons"
+            }
+
+            if ($_.UserName -ieq $_.NonAdminUserName) {
+                Write-Error "Lab $($_.LabName) has the same UserName and NonAdminUserName, please update one of them"
+            }
+        }
+        if ((Get-Member -InputObject $_ -Name 'NonAdminPassword') -and ($_.NonAdminPassword)) {
+            if ($_.NonAdminPassword -and ($_.NonAdminPassword -ieq "TestNonAdmin00000000")) {
+                Write-Warning "Lab $($_.LabName) is using the default non-admin Password from the example CSV, please update it for security reasons"
+            }
+        }       
 
         if ((Get-Member -InputObject $_ -Name 'Size') -and ($_.Size)) {
             $_.Size = Validate-SkuName -Sku $_.Size
@@ -160,15 +202,16 @@ function Import-LabsCsv {
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "SharedPassword" -Value 'Disabled'
         }
         else {
-            if ($_.SharedPassword) {
+            if ($_.SharedPassword -ieq "Enabled" -or $_.SharedPassword -ieq "True") {
                 $_.SharedPassword = "Enabled"
-            } else {
+            } 
+            else {
                 $_.SharedPassword = "Disabled"
             }
         }
 
         if ((Get-Member -InputObject $_ -Name 'UsageMode')) {
-            if ($_.UsageMode -eq "Restricted") {
+            if ($_.UsageMode -ieq "Restricted") {
                 $_.UsageMode = "Disabled"
             } else {
                 $_.UsageMode = "Enabled"
@@ -178,31 +221,18 @@ function Import-LabsCsv {
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "UsageMode" -Value 'Disabled'
         }
 
-
+        if (!(Get-Member -InputObject $_ -Name 'GpuDriverEnabled')) {
+            Add-Member -InputObject $_ -MemberType NoteProperty -Name "GpuDriverEnabled" -Value 'Disabled'
+        }
         if (Get-Member -InputObject $_ -Name 'GpuDriverEnabled') {
-            if ($_.GpuDriverEnabled) {
+            if ($_.GpuDriverEnabled -ieq "Enabled" -or $_.GpuDriverEnabled -ieq "True") {
                 $_.GpuDriverEnabled = "Enabled"
-            }
+            } 
             else {
                 $_.GpuDriverEnabled = "Disabled"
             }
         }
-        else {
-            Add-Member -InputObject $_ -MemberType NoteProperty -Name "GpuDriverEnabled" -Value "Disabled"
-        }
-
-        if (Get-Member -InputObject $_ -Name 'LinuxRdp') {
-            if ($_.LinuxRdp) {
-                $_.LinuxRdp = [System.Convert]::ToBoolean($_.LinuxRdp)
-            }
-            else {
-                $_.LinuxRdp = $false
-            }
-        }
-        else {
-            Add-Member -InputObject $_ -MemberType NoteProperty -Name "LinuxRdp" -Value $false
-        }
-
+      
         if ((Get-Member -InputObject $_ -Name 'Schedules') -and ($_.Schedules)) {
             Write-Verbose "Setting schedules for $($_.LabName)"
             $_.Schedules = Import-Schedules -schedules $_.Schedules
@@ -211,7 +241,6 @@ function Import-LabsCsv {
             #Assign to empty array since New-AzLab expects this property to exist, but this property should be optional in the csv
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "Schedules" -Value @() 
         }
-
     }
 
     Write-Verbose ($labs | ConvertTo-Json -Depth 40 | Out-String)
@@ -219,6 +248,114 @@ function Import-LabsCsv {
     return ,$labs # PS1 Magick here, the comma is actually needed. Don't ask why.
     # Ok, here is why, PS1 puts each object in the collection on the pipeline one by one
     # unless you say explicitely that you want to pass it as a single object
+}
+
+function Set-LabImageProperties {
+    param(
+        [parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [object]
+        $Lab
+    )
+    
+    Write-Host "Validating provided image. Image name: $($Lab.ImageName)."
+    if ((Get-Member -InputObject $Lab -Name 'SharedGalleryId') -and ($Lab.SharedGalleryId)) {
+        Write-Host "Validating lab's shared image properties. SharedGalleryId: $($Lab.SharedGalleryId)."
+        # Ensure the provided SharedGalleryId is valid by checking that it matches the lab plan's Shared Image/Compute Gallery
+        $labPlan = Get-AzLabServicesLabPlan -ResourceGroupName $Lab.ResourceGroupName -Name $Lab.LabPlanName
+
+        if (!$Lab.SharedGalleryId.ToLower().StartsWith($labPlan.SharedGalleryId.ToLower())) {
+            Write-Error "An unexpected Shared Image/Compute Gallery is attached to the lab plan.  Lab plan: $($Lab.LabPlanName)) Expected gallery: $($Lab.SharedGalleryId) Actual gallery: $($labPlan.SharedGalleryId))"
+        }
+    }
+
+    # Must filter on the server because this returns all images available on a lab plan (includes both marketplace and shared image/compute gallery images)
+    $targetImageName = $Lab.ImageName.ToLower()
+    $filterQuery = "indexof(tolower(properties/displayName),'$($targetImageName)') gt -1 and properties/enabledState eq 'Enabled'" 
+    $imageResult = Get-AzLabServicesPlanImage -LabPlanName $Lab.LabPlanName -ResourceGroupName $Lab.ResourceGroupName -Filter $filterQuery
+       
+    if (!$imageResult) {
+        Write-Error "No images found.  Ensure that the correct image name was provided and that the image is enabled on the lab plan. Image name: $($Lab.ImageName), Lab plan: $($Lab.LabPlanName)."
+    }
+
+    $foundImage = $null
+    if (Get-Member -InputObject $imageResult -Name 'Count') {
+                    
+        if ($imageResult.Count -ne 1) { 
+            Write-Error "Must match exactly one image with the provided image name. Image name: $($Lab.ImageName), Actual match count: $($imageResult.Count)."
+        }
+
+        $foundImage = $imageResult[0]
+     }
+     else {
+        $foundImage = $imageResult
+     }
+
+     $imageInformation = @{}
+     if ($foundImage -and $foundImage.SharedGalleryId -and $foundImage.AvailableRegion) {
+                    
+        # If this is a gallery image, check that it's been replicated to the lab's region
+        if (!$foundImage.AvailableRegion.ToLower().Contains($_.Location.ToLower())) {
+            Write-Error "Image must be replicated to the lab's region. Region: $($Lab.Location)"
+        }
+
+        $imageInformation.Add("ImageReferenceId",$foundImage.SharedGalleryId)
+     }
+     else {
+        $imageInformation.Add("ImageReferenceOffer",$foundImage.Offer)
+        $imageInformation.Add("ImageReferencePublisher",$foundImage.Publisher)
+        $imageInformation.Add("ImageReferenceSku",$foundImage.Sku)
+        $imageInformation.Add("ImageReferenceVersion",$foundImage.Version)
+     }
+
+     Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ImageInformation" -Value $imageInformation
+     Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ImageOSType" -Value $foundImage.OSType
+     Write-Host "Finished setting lab's image properties." 
+}
+
+function Set-LabConnectionProperties {
+    param(
+        [parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [object]
+        $Lab
+    )
+
+    Write-Host "Validating lab's connection properties. Image OS type: $($Lab.ImageOSType)."
+
+    $linuxRdp = $false
+
+    if (Get-Member -InputObject $Lab -Name 'LinuxRdp') {
+        if ($Lab.LinuxRdp) {
+            if ($Lab.LinuxRdp -ieq "Enabled" -or $Lab.LinuxRdp -ieq "True") {
+                $linuxRdp  = $true
+            } 
+
+            if ($linuxRdp -and $Lab.ImageOSType -ne "Linux") {
+                Write-Error "Linux Rdp can only be enabled for a Linux image.  LinuxRdp: $($linuxRdp), ImageName: $($Lab.ImageName)"
+            }
+        }
+    }
+     
+    $connectionProfile = @{}
+    if ($Lab.ImageOSType -eq "Windows") {
+        $connectionProfile.Add("ConnectionProfileClientRdpAccess", "Public")
+        $connectionProfile.Add("ConnectionProfileClientSshAccess", "None")
+        Write-Host "Enabling lab's Windows RDP connection settings."        
+     } 
+     elseif ($linuxRdp) {
+        $connectionProfile.Add("ConnectionProfileClientRdpAccess", "Public")
+        $connectionProfile.Add("ConnectionProfileClientSshAccess", "Public")
+        Write-Host "Enabling lab's Linux RDP/SSH connection settings."
+     } 
+     else {
+        $connectionProfile.Add("ConnectionProfileClientRdpAccess", "None")
+        $connectionProfile.Add("ConnectionProfileClientSshAccess", "Public")
+        Write-Host "Enabling lab's Linux SSH connection settings."
+     }
+     
+     Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ConnectionProfile" -Value $connectionProfile
+     Write-Host "Finished setting lab's connection properties." 
 }
 
 function Export-LabsCsv {
@@ -500,26 +637,7 @@ function New-AzLabsBulk {
                 }
                 else {
 
-                    # Try to get shared image and then gallery image
-                    Write-Host "Image Name: $($obj.ImageName)"
-                    $img = Get-AzLabServicesPlanImage -LabPlanName $($plan.Name) -ResourceGroupName $($obj.ResourceGroupName) | Where-Object {($_.DisplayName -like "*$($obj.ImageName)*") -and ($_.EnabledState.ToString() -eq "Enabled")}
-                    if (-not $img) { Write-Error "$($obj.ImageName) pattern doesn't match just any gallery image (0)." }
-                    if (@($img).Count -ne 1) { Write-Error "$($obj.ImageName) pattern doesn't match just one gallery image. $(@($img).Count.ToString())" }
-
-                    # Set the TemplateVmState, defaulting to enabled
-                    if (Get-Member -InputObject $obj -Name TemplateVmState) {
-                        if ($obj.TemplateVmState -and ($obj.TemplateVmState -ieq "Disabled")) {
-                            $obj.TemplateVmState  = "Image"
-                        }
-                        else {
-                            $obj.TemplateVmState  = "TemplateVM"
-                        }
-                    }
-                    else {
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name TemplateVmState -Value "Enabled"
-                        $obj.TemplateVmState  = "TemplateVM"
-                    }
-
+                    # Get value for optional idle grace period parameter
                     $idleGracePeriodParameters = @{}
                     if ($obj.idleGracePeriod -ge 1) {
                         $idleGracePeriodParameters.Add("AutoShutdownProfileShutdownOnIdle","UserAbsence")
@@ -528,6 +646,7 @@ function New-AzLabsBulk {
                         $idleGracePeriodParameters.Add("AutoShutdownProfileShutdownOnIdle","None")
                     }
 
+                    # Get value for optional disconnect on idle parameter
                     $enableDisconnectOnIdleParameters = @{}
                     if ($obj.idleOsGracePeriod -ge 1) {
                         $enableDisconnectOnIdleParameters.Add("AutoShutdownProfileShutdownOnDisconnect","Enabled")
@@ -536,6 +655,7 @@ function New-AzLabsBulk {
                         $enableDisconnectOnIdleParameters.Add("AutoShutdownProfileShutdownOnDisconnect","Disabled")
                     }
 
+                    # Get value for optional grace period when not connected parameter
                     $idleNoConnectGracePeriodParameters = @{}
                     if ($obj.idleNoConnectGracePeriod -ge 1) {
                         $idleNoConnectGracePeriodParameters.Add("AutoShutdownProfileShutdownWhenNotConnected","Enabled")
@@ -543,51 +663,34 @@ function New-AzLabsBulk {
                     } else {
                         $idleNoConnectGracePeriodParameters.Add("AutoShutdownProfileShutdownWhenNotConnected","Disabled")
                     }
-                    
-                    $ConnectionProfile = @{}
-                    if ($img.OSType -eq "Windows") {
-                        $ConnectionProfile.Add("ConnectionProfileClientRdpAccess", "Public")
-                        $ConnectionProfile.Add("ConnectionProfileClientSshAccess", "None")
-                    } elseif ($obj.LinuxRdp) {
-                        $ConnectionProfile.Add("ConnectionProfileClientRdpAccess", "Public")
-                        $ConnectionProfile.Add("ConnectionProfileClientSshAccess", "Public")
-                    } else {
-                        $ConnectionProfile.Add("ConnectionProfileClientRdpAccess", "None")
-                        $ConnectionProfile.Add("ConnectionProfileClientSshAccess", "Public")
-                    }
-                    
-                    $ImageInformation = @{}
-                    if ($img.SharedGalleryId) {
-                        $ImageInformation.Add("ImageReferenceId",$img.SharedGalleryId)
-                    } else {
-                        $ImageInformation.Add("ImageReferenceOffer",$img.Offer)
-                        $ImageInformation.Add("ImageReferencePublisher",$img.Publisher)
-                        $ImageInformation.Add("ImageReferenceSku",$img.Sku)
-                        $ImageInformation.Add("ImageReferenceVersion",$img.Version)
-                    }
 
                     # If the lab plan has a subnet, we should use it in the create lab request
+                    $subnetParameters = @{}
                     if ($plan -and $plan.DefaultNetworkProfileSubnetId) {
                         $subnetParameters = @{
                             NetworkProfileSubnetId = $plan.DefaultNetworkProfileSubnetId
                         }
                     }
-                    else {
-                        $subnetParameters = @{
+                   
+                    # Get value for optional non-admin credentials parameter
+                    $nonAdminCreds = @{}
+                    if ((Get-Member -InputObject $obj -Name 'NonAdminUsername') -and ($obj.NonAdminUsername)) {
+                        $nonAdminCreds = @{
+                            NonAdminUserUsername = $obj.NonAdminUsername
+                            NonAdminUserPassword  = $(ConvertTo-SecureString $obj.NonAdminPassword -AsPlainText -Force);
                         }
                     }
-                    
+         
+                    # Get value for optional Tags parameter
+                    $customTags = @{}
                     if ((Get-Member -InputObject $obj -Name 'Tags') -and ($obj.Tags)) {
-                        $hashTags = @{
+                        $customTags = @{
                             Tag = ConvertFrom-StringData -StringData ($obj.Tags.Replace(";","`r`n"))
                         }
                     }
-                    else {
-                        $hashTags = @{
-                        }
-                    }
 
-                    $NewLabParameters = @{
+                    # Set required parameters for creating a new lab
+                    $requiredNewLabParameters = @{
                         Name = $obj.LabName;
                         ResourceGroupName = $obj.ResourceGroupName;
                         Location = $obj.Location;
@@ -596,8 +699,6 @@ function New-AzLabsBulk {
                         AdminUserPassword = $(ConvertTo-SecureString $obj.Password -AsPlainText -Force);
                         AdminUserUsername = $obj.UserName;
                         AdditionalCapabilityInstallGpuDriver = $obj.GpuDriverEnabled;
-                        ConnectionProfileWebRdpAccess = "None";
-                        ConnectionProfileWebSshAccess = "None";
                         LabPlanId = $plan.Id;
                         SecurityProfileOpenAccess = $obj.UsageMode;
                         SkuCapacity = $obj.MaxUsers;
@@ -605,26 +706,32 @@ function New-AzLabsBulk {
                         VirtualMachineProfileCreateOption = $obj.TemplateVmState;
                         VirtualMachineProfileUsageQuota = $(New-TimeSpan -Hours $obj.UsageQuota).ToString();
                         VirtualMachineProfileUseSharedPassword = $obj.SharedPassword;
+                        ConnectionProfileWebRdpAccess = "None";
+                        ConnectionProfileWebSshAccess = "None";
                     }
 
-                    $FullParameterList = $NewLabParameters + `
+                    $requiredNewLabParameters += $obj.ConnectionProfile;
+                    $requiredNewLabParameters += $obj.ImageInformation;
+
+                    # Set optional parameters for creating a new lab
+                    $optionalNewLabParameters = $nonAdminCreds + `
                                          $idleGracePeriodParameters + `
                                          $enableDisconnectOnIdleParameters + `
                                          $idleNoConnectGracePeriodParameters + `
-                                         $ConnectionProfile + `
-                                         $ImageInformation + `
-                                         $hashTags + `
+                                         $customTags + `
                                          $subnetParameters
+
+                    $fullParameterList = $requiredNewLabParameters + $optionalNewLabParameters
 
                     Write-Host "Starting lab creation $($obj.LabName)"
 
                     try {
-                        $currentLab = New-AzLabServicesLab @FullParameterList
+                        $currentLab = New-AzLabServicesLab @fullParameterList
                     }
                     catch {
                         Write-Host "In Catch: $_"
                         Start-Sleep -Seconds 30
-                        $currentLab = New-AzLabServicesLab @FullParameterList
+                        $currentLab = New-AzLabServicesLab @fullParameterList
                     }
                     Write-Host "Lab $($obj.LabName) provisioning state $($currentLab.ProvisioningState)"
                     Write-Host "Completed lab creation step in $([math]::Round(((Get-Date) - $StartTime).TotalMinutes, 1)) minutes"
@@ -677,7 +784,6 @@ function New-AzLabsBulk {
                             Send-AzLabServicesUserInvite -ResourceGroupName $obj.ResourceGroupName -LabName $obj.LabName -UserName $user.name -Text $obj.Invitation | Out-Null
                         }
                     }
-
                 }
 
                 if ($obj.Schedules) {
@@ -742,7 +848,6 @@ function New-AzLabsBulk {
             }
 
             return JobManager -currentJobs $jobs -ResultColumnName "LabResult" -ConfigObject $ConfigObject
-
         }
 
         New-AzLab-Jobs   -ConfigObject $aggregateLabs 
