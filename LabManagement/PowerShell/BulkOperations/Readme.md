@@ -63,7 +63,7 @@ Item              | Description
 Id                | A unique id for the lab
 Tags              | A set of tags applied to the lab.
 ResourceGroupName | The name of the resource group that the lab plan will be created in.  If the resource group doesn't already exist, it will be created.
-Location          | The region that the Lab will be created in, if the lab doesn't already exist.  If the Lab (by LabName) already exists, this row is skipped.
+Location          | The region that the Lab will be created in, if the lab doesn't already exist.  If the Lab in the Lab Plan's resource group already exists, this row is skipped.
 LabPlanName       | The name of the Lab Plan to be created, if the lab plan doesn't already exist or if different will be adjusted to the defaults.  If your lab plan needs advanced networking, we recommend that you manually create your lab plan and only use this script for deploying labs.
 LabName           | The name of the Lab to be created.
 ImageName         | The image name that the lab will be based on.  Wildcards are accepted, but the ImageName field should match only 1 image.
@@ -75,11 +75,11 @@ SharedPassword    | Enabled\Disabled values indicate whether the lab should use 
 Size              | The Virtual Machine size to use for the Lab. Please see details below on how these map to the Azure Portal.
 Title             | The title for the lab.
 Descr             | The description for the lab.
-UserName          | The default username for admin account
-Password          | The default password for admin account
-NonAdminUserName  | Username for optional non-admin account
-NonAdminPassword  | Password for optional non-admin account
-LinuxRdp          | Set to "True" if the Virtual Machine requires Linux RDP, otherwise "False"
+UserName          | The default username for admin account.
+Password          | The default password for admin account.
+NonAdminUserName  | Username for optional non-admin account.
+NonAdminPassword  | Password for optional non-admin account.
+LinuxRdp          | Set to "True" if the Virtual Machine requires Linux RDP, otherwise "False".
 Emails            | Semicolon separated string of student emails to be added to the lab.  For example:  "bob@test.com;charlie@test.com"
 LabOwnerEmails    | Semicolon separated string of teacher emails to be added to the lab.  The teacher will get Owner rights to the lab, and Reader rights to the Lab Account.  NOTE: this account must exist in Azure Active Directory tenant.
 Invitation        | Note to include in the invitation email to students.  If you leave this field blank, invitation emails won't be sent during lab creation.

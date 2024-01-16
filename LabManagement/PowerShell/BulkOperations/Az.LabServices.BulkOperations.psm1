@@ -16,28 +16,43 @@ if (-not (Get-Command -Name "Get-AzLabServicesLab" -ErrorAction SilentlyContinue
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Validate-SkuName {
+function Validate-SkuName{
     param(
         [parameter(Mandatory = $true, ValueFromPipeline = $true)]
-        [string] $Sku
+        [string] $Sku,
+
+        [parameter(Mandatory = $true)]
+        [string] $labLocation
         )
 
     # We look up the correct size from the API, this way user can give us size or name
     $subscriptionId = (Get-AzContext).Subscription.Id
     $allSkus = (Invoke-AzRestMethod -Uri https://management.azure.com/subscriptions/$subscriptionId/providers/Microsoft.LabServices/skus?api-version=2022-08-01 | Select-Object -Property "Content" -ExpandProperty Content | ConvertFrom-Json).value
 
-    # Match the provided sku by either the name or the size property.
-    # For example, the name of the sku is "Basic" and the size is "Fsv2_2_4GB_128_S_SSD"
-    $matchedSku = $allSKus | Where-Object {$_.name -ieq $Sku -or $_.size -ieq $Sku} | Select-Object -First 1
-
-    Write-Host "Validating provided VM size. Sku: $($Sku)."
-    if ($matchedSku) {
-        return "$($matchedSku.tier)_$($matchedSku.size)"
+    # Match the provided sku by either the name, size, and locations property
+    # For example:
+    # resourceType : labs
+    # name         : Basic
+    # tier         : Classic
+    # size         : Fsv2_2_4GB_128_S_SSD
+    # family       : Fsv2
+    # locations    : {eastus2}
+    # locationInfo : {@{location=eastus2; zones=System.Object[]; zoneDetails=System.Object[]}}
+    # capacity     : @{minimum=0; maximum=400; default=1; scaleType=Automatic}
+    # capabilities : {@{name=vCPUs; value=2}, @{name=MemoryGB; value=4}, @{name=StorageGB; value=128}, @{name=StorageType; value=StandardSSD}...}
+    # restrictions : {}
+    $allMatchedSkus = $allSkus | Where-Object {($_.name -ieq $Sku -or $_.size -ieq $Sku) -and $_.locations -ieq $labLocation}
+   
+    Write-Host "Validating provided VM size. Provided SKU: $($Sku) Lab region: $labLocation."
+    if (@($allMatchedSkus).Count -eq 0) {
+        $allSkus | Out-File -FilePath ".\AzLabBulkDeploySkuList.txt"
+        Write-Error "Failed to find a matching VM SKU.  Provided SKU: $($Sku) Lab region: $labLocation.  Verify that the provided SKU is a valid VM SKU name or size, and that the SKU is available in the same location as the lab's region. See .\AzLabBulkDeploySkuList.txt for list of valid SKUs for your subscription."
+        return
     }
     else {
-        #write out all valid skus to log file
-        $allSkus | Out-File -FilePath ".\AzLabBulkDeploySkuList.txt"
-        Write-Error "Specified VM size '$Sku' is invalid.  Verify that the value provided is a valid VM SKU name or size.  See .\AzLabBulkDeploySkuList.txt for list of valid SKUs for your subscription."
+        # There may be duplicate skus, so we need to pick the first one
+        $matchedSku = $allMatchedSkus | Select-Object -First 1
+        return "$($matchedSku.tier)_$($matchedSku.size)"
     }
 }
 
@@ -103,19 +118,33 @@ function Import-LabsCsv {
 
         # First thing, we need to save the original properties in case they're needed later (for export)
         Add-Member -InputObject $_ -MemberType NoteProperty -Name OriginalProperties -Value $_.PsObject.Copy()
-
-        if (Get-Member -InputObject $_ -Name TemplateVmState) {
-            if ($_.TemplateVmState -and ($_.TemplateVmState -ieq "Disabled")) {
-                $_.TemplateVmState  = "Image"
-            }
-            else {
-                $_.TemplateVmState  = "TemplateVM"
-            }
-         }
-         else {
+        $labPlan = Get-AzLabServicesLabPlan -ResourceGroupName $_.ResourceGroupName -Name $_.LabPlanName
+        
+        if (!(Get-Member -InputObject $_ -Name 'TemplateVmState')) {
             Write-Warning "Missing lab's template VM value - defaulting to 'Enabled'.  Column name: TemplateVM."
-            Add-Member -InputObject $_ -MemberType NoteProperty -Name TemplateVmState -Value "Enabled"
-            $_.TemplateVmState  = "TemplateVM"
+            Add-Member -InputObject $_ -MemberType NoteProperty -Name "TemplateVmState" -Value 'Enabled'
+        }
+        if (Get-Member -InputObject $_ -Name 'TemplateVmState') {
+            if ($_.TemplateVmState -ieq "Enabled" -or $_.TemplateVmState -ieq "True") {
+                $_.TemplateVmState = "TemplateVM"
+            } 
+            else {
+                $_.TemplateVmState = "Image"
+            }
+        }
+
+        if (!(Get-Member -InputObject $_ -Name 'Location')) {
+            Write-Warning "Missing lab's Location value that designates the region the lab will be created.  Defaulting to lab plan's Location.  Column name: Location."
+            Add-Member -InputObject $_ -MemberType NoteProperty -Name "Location" -Value $labPlan.Location
+        }
+        else {
+            if (($labPlan.Location -ne $_.Location) -and ($_.TemplateVmState -ieq "Enabled")) {
+                Write-Warning "If you need to export images from the lab's template VM, the lab's location must match the lab plan's location due to product limitation.  Lab plan: $($_.LabPlanName) Lab plan location: $($labPlan.Location) Lab location: $($_.Location)."
+            }
+            
+            if ($labPlan.AllowedRegion.ToLower() -notcontains $_.Location.ToLower()) {
+                Write-Error "Lab's location must be one of the enabled regions for the lab plan.  Lab plan: $($_.LabPlanName) Allowed regions: $($labPlan.AllowedRegion) Lab location: $($_.Location)."
+            }
         }
         
         # Validate that the name is good, before we start creating labs
@@ -138,8 +167,8 @@ function Import-LabsCsv {
 
         # Image and lab connection set up
         if ($_.ImageName) {
-            Set-LabImageProperties -Lab $_
-            if ($_.ImageOSType) {
+            Set-LabImageProperties -Lab $_ -LabPlan $labPlan
+            if ((Get-Member -InputObject $_ -Name 'ImageOSType') -and $_.ImageOSType) {
                 # The RDP/SSH connection properties are based on the image's OS type
                 Set-LabConnectionProperties -Lab $_
             }
@@ -153,30 +182,32 @@ function Import-LabsCsv {
 
         # Checking to ensure the user has changed the example username/password in CSV files for the admin and non-admin credentials.
         # Note that the non-admin credentials are optional in the csv file.
-        if ($_.UserName -and ($_.UserName -ieq "testadmin")) {
-            Write-Warning "Lab $($_.LabName) is using the default UserName from the example CSV, please update it for security reasons"
+        if ($_.UserName -and ($_.UserName -like "*test*")) {
+            Write-Warning "Lab $($_.LabName) is using 'test' in the UserName.  Please ensure you're providing the 
+            a valid username for the lab's admin user."
         }
-        if ($_.Password -and ($_.Password -ieq "TestAdmin00000000")) {
-            Write-Warning "Lab $($_.LabName) is using the default Password from the example CSV, please update it for security reasons"
+        if ($_.Password -and ($_.Password -like "*test*")) {
+            Write-Warning "Lab $($_.LabName) is using 'test' in the Password.  Please ensure you're providing a strong password for the lab's admin user for security reasons."
         }
 
         if ((Get-Member -InputObject $_ -Name 'NonAdminUserName') -and ($_.NonAdminUserName)) {
-            if ($_.NonAdminUserName -and ($_.UserName -ieq "testnonadmin")) {
-                Write-Warning "Lab $($_.LabName) is using the default NonAdminUserName from the example CSV, please update it for security reasons"
+            if ($_.NonAdminUserName -and ($_.NonAdminUserName -like "*test*")) {
+                Write-Warning "Lab $($_.LabName) is using 'test' in the NonAdminUserName.  Please ensure you're providing a valid username for the lab's non-admin user."
             }
 
             if ($_.UserName -ieq $_.NonAdminUserName) {
-                Write-Error "Lab $($_.LabName) has the same UserName and NonAdminUserName, please update one of them"
+                # If not unique, causes a Bad Request when creating the lab
+                Write-Error "Lab $($_.LabName) has the same UserName and NonAdminUserName.  Please update one of them so that they are unique."
             }
         }
         if ((Get-Member -InputObject $_ -Name 'NonAdminPassword') -and ($_.NonAdminPassword)) {
-            if ($_.NonAdminPassword -and ($_.NonAdminPassword -ieq "TestNonAdmin00000000")) {
-                Write-Warning "Lab $($_.LabName) is using the default non-admin Password from the example CSV, please update it for security reasons"
+            if ($_.NonAdminPassword -and ($_.NonAdminPassword -like "*test*")) {
+                Write-Warning "Lab $($_.LabName) is using 'test' in the NonAdminPassword.  Please ensure you're providing a strong password for the lab's non-admin user for security reasons."
             }
         }       
 
         if ((Get-Member -InputObject $_ -Name 'Size') -and ($_.Size)) {
-            $_.Size = Validate-SkuName -Sku $_.Size
+            $_.Size = Validate-SkuName -Sku $_.Size -labLocation $_.Location
         }
         else {
             Write-Error "Size is a required field, cannot continue without it"
@@ -199,7 +230,8 @@ function Import-LabsCsv {
         }
 
         if (!(Get-Member -InputObject $_ -Name 'SharedPassword')) {
-            Add-Member -InputObject $_ -MemberType NoteProperty -Name "SharedPassword" -Value 'Disabled'
+            Write-Warning "Missing lab's SharedPassword value - defaulting to 'Enabled'.  Column name: SharedPassword."
+            Add-Member -InputObject $_ -MemberType NoteProperty -Name "SharedPassword" -Value 'Enabled'
         }
         else {
             if ($_.SharedPassword -ieq "Enabled" -or $_.SharedPassword -ieq "True") {
@@ -210,18 +242,23 @@ function Import-LabsCsv {
             }
         }
 
-        if ((Get-Member -InputObject $_ -Name 'UsageMode')) {
-            if ($_.UsageMode -ieq "Restricted") {
-                $_.UsageMode = "Disabled"
-            } else {
-                $_.UsageMode = "Enabled"
-            }
+        if (!(Get-Member -InputObject $_ -Name 'UsageMode')) {
+            #  Default to restricted since this is the most secure option
+            Write-Warning "Missing lab's UsageMode value - defaulting to 'Restricted'.  Column name: UsageMode."
+            Add-Member -InputObject $_ -MemberType NoteProperty -Name "UsageMode" -Value 'Enabled'
         }
         else {
-            Add-Member -InputObject $_ -MemberType NoteProperty -Name "UsageMode" -Value 'Disabled'
-        }
+            if ($_.UsageMode -ieq "Restricted") {
+                $_.UsageMode = "Enabled"
+            } 
+            else {
+                $_.UsageMode = "Disabled"
+            }
+        }    
 
         if (!(Get-Member -InputObject $_ -Name 'GpuDriverEnabled')) {
+            # Default to disabled since this column will typically be ommitted when non-GPU labs are being created
+            Write-Verbose "Missing lab's GpuDriverEnabled value - defaulting to 'Disabled'.  Column name: GpuDriverEnabled."
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "GpuDriverEnabled" -Value 'Disabled'
         }
         if (Get-Member -InputObject $_ -Name 'GpuDriverEnabled') {
@@ -255,17 +292,21 @@ function Set-LabImageProperties {
         [parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
         [object]
-        $Lab
+        $Lab,
+
+        [parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [object]
+        $LabPlan
     )
     
-    Write-Host "Validating provided image. Image name: $($Lab.ImageName)."
+    Write-Verbose "Validating provided image. Image name: $($Lab.ImageName)."
     if ((Get-Member -InputObject $Lab -Name 'SharedGalleryId') -and ($Lab.SharedGalleryId)) {
-        Write-Host "Validating lab's shared image properties. SharedGalleryId: $($Lab.SharedGalleryId)."
+        Write-Verbose "Validating lab's shared image properties. SharedGalleryId: $($Lab.SharedGalleryId)."
+   
         # Ensure the provided SharedGalleryId is valid by checking that it matches the lab plan's Shared Image/Compute Gallery
-        $labPlan = Get-AzLabServicesLabPlan -ResourceGroupName $Lab.ResourceGroupName -Name $Lab.LabPlanName
-
-        if (!$Lab.SharedGalleryId.ToLower().StartsWith($labPlan.SharedGalleryId.ToLower())) {
-            Write-Error "An unexpected Shared Image/Compute Gallery is attached to the lab plan.  Lab plan: $($Lab.LabPlanName)) Expected gallery: $($Lab.SharedGalleryId) Actual gallery: $($labPlan.SharedGalleryId))"
+        if (!$Lab.SharedGalleryId.ToLower().StartsWith($LabPlan.SharedGalleryId.ToLower())) {
+            Write-Error "An unexpected Shared Image/Compute Gallery is attached to the lab plan.  Lab plan: $($Lab.LabPlanName)) Expected gallery: $($Lab.SharedGalleryId) Actual gallery: $($LabPlan.SharedGalleryId))"
         }
     }
 
@@ -273,44 +314,37 @@ function Set-LabImageProperties {
     $targetImageName = $Lab.ImageName.ToLower()
     $filterQuery = "indexof(tolower(properties/displayName),'$($targetImageName)') gt -1 and properties/enabledState eq 'Enabled'" 
     $imageResult = Get-AzLabServicesPlanImage -LabPlanName $Lab.LabPlanName -ResourceGroupName $Lab.ResourceGroupName -Filter $filterQuery
-       
+
     if (!$imageResult) {
-        Write-Error "No images found.  Ensure that the correct image name was provided and that the image is enabled on the lab plan. Image name: $($Lab.ImageName), Lab plan: $($Lab.LabPlanName)."
+        Write-Error "No images found.  Ensure that the correct image name was provided and that the image is enabled on the lab plan. Image name: $($Lab.ImageName), Lab plan: $($Lab.LabPlanName), Lab: $($Lab.LabName)."
     }
+    elseif (@($imageResult).Count -ne 1) { 
+        Write-Error "Must match exactly one image with the provided image name. Image name: $($Lab.ImageName), Lab: $($Lab.LabName), Actual match count: $($imageResult.Count)."
+    }
+    else {
+        $foundImage = @($imageResult)[0];
 
-    $foundImage = $null
-    if (Get-Member -InputObject $imageResult -Name 'Count') {
+        $imageInformation = @{}
+        if ($foundImage.SharedGalleryId -and $foundImage.AvailableRegion) {
                     
-        if ($imageResult.Count -ne 1) { 
-            Write-Error "Must match exactly one image with the provided image name. Image name: $($Lab.ImageName), Actual match count: $($imageResult.Count)."
-        }
-
-        $foundImage = $imageResult[0]
-     }
-     else {
-        $foundImage = $imageResult
-     }
-
-     $imageInformation = @{}
-     if ($foundImage -and $foundImage.SharedGalleryId -and $foundImage.AvailableRegion) {
-                    
-        # If this is a gallery image, check that it's been replicated to the lab's region
-        if (!$foundImage.AvailableRegion.ToLower().Contains($_.Location.ToLower())) {
-            Write-Error "Image must be replicated to the lab's region. Region: $($Lab.Location)"
-        }
-
-        $imageInformation.Add("ImageReferenceId",$foundImage.SharedGalleryId)
-     }
-     else {
-        $imageInformation.Add("ImageReferenceOffer",$foundImage.Offer)
-        $imageInformation.Add("ImageReferencePublisher",$foundImage.Publisher)
-        $imageInformation.Add("ImageReferenceSku",$foundImage.Sku)
-        $imageInformation.Add("ImageReferenceVersion",$foundImage.Version)
-     }
-
-     Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ImageInformation" -Value $imageInformation
-     Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ImageOSType" -Value $foundImage.OSType
-     Write-Host "Finished setting lab's image properties." 
+            # Since this is a gallery image, check that it's been replicated to the lab's region
+            if (!$foundImage.AvailableRegion.ToLower().Contains($_.Location.ToLower())) {
+                Write-Error "Image must be replicated to the lab's region. Region: $($Lab.Location)"
+            }
+    
+            $imageInformation.Add("ImageReferenceId",$foundImage.SharedGalleryId)
+         }
+         else {
+            $imageInformation.Add("ImageReferenceOffer",$foundImage.Offer)
+            $imageInformation.Add("ImageReferencePublisher",$foundImage.Publisher)
+            $imageInformation.Add("ImageReferenceSku",$foundImage.Sku)
+            $imageInformation.Add("ImageReferenceVersion",$foundImage.Version)
+         }
+    
+         Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ImageInformation" -Value $imageInformation
+         Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ImageOSType" -Value $foundImage.OSType
+         Write-Verbose "Finished setting lab's image properties." 
+    }
 }
 
 function Set-LabConnectionProperties {
@@ -321,7 +355,7 @@ function Set-LabConnectionProperties {
         $Lab
     )
 
-    Write-Host "Validating lab's connection properties. Image OS type: $($Lab.ImageOSType)."
+    Write-Verbose "Validating lab's connection properties. Image OS type: $($Lab.ImageOSType)."
 
     $linuxRdp = $false
 
@@ -341,21 +375,21 @@ function Set-LabConnectionProperties {
     if ($Lab.ImageOSType -eq "Windows") {
         $connectionProfile.Add("ConnectionProfileClientRdpAccess", "Public")
         $connectionProfile.Add("ConnectionProfileClientSshAccess", "None")
-        Write-Host "Enabling lab's Windows RDP connection settings."        
+        Write-Verbose "Enabling lab's Windows RDP connection settings."        
      } 
      elseif ($linuxRdp) {
         $connectionProfile.Add("ConnectionProfileClientRdpAccess", "Public")
         $connectionProfile.Add("ConnectionProfileClientSshAccess", "Public")
-        Write-Host "Enabling lab's Linux RDP/SSH connection settings."
+        Write-Verbose "Enabling lab's Linux RDP/SSH connection settings."
      } 
      else {
         $connectionProfile.Add("ConnectionProfileClientRdpAccess", "None")
         $connectionProfile.Add("ConnectionProfileClientSshAccess", "Public")
-        Write-Host "Enabling lab's Linux SSH connection settings."
+        Write-Verbose "Enabling lab's Linux SSH connection settings."
      }
      
      Add-Member -InputObject $Lab -MemberType NoteProperty -Name "ConnectionProfile" -Value $connectionProfile
-     Write-Host "Finished setting lab's connection properties." 
+     Write-Verbose "Finished setting lab's connection properties." 
 }
 
 function Export-LabsCsv {
@@ -548,10 +582,13 @@ function New-AzLabPlansBulk {
 
             $jobs = @()
 
-            $plans | ForEach-Object {
-                Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)") -ThrottleLimit $ThrottleLimit
+            # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+            foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name ("$($config.ResourceGroupName)+$($config.LabPlanName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
+    
             return JobManager -currentJobs $jobs -ResultColumnName "LabPlanResult" -ConfigObject $ConfigObject
         }
 
@@ -842,15 +879,18 @@ function New-AzLabsBulk {
             Write-Host "Starting creation of all labs in parallel. Can take a while."
             $jobs = @()
 
-            $ConfigObject | ForEach-Object {
-                Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name  ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+            # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+            foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name  ("$($config.ResourceGroupName)+$($config.LabPlanName)+$($config.LabName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
 
+            Write-Verbose "Job count: $($jobs.Count)"
             return JobManager -currentJobs $jobs -ResultColumnName "LabResult" -ConfigObject $ConfigObject
         }
 
-        New-AzLab-Jobs   -ConfigObject $aggregateLabs 
+        New-AzLab-Jobs -ConfigObject $aggregateLabs 
     }
 }
 
@@ -1080,12 +1120,15 @@ function Remove-AzLabsBulk {
 
             $jobs = @()
 
-            $labs | ForEach-Object {
-                Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+            # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+            foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name  ("$($config.ResourceGroupName)+$($config.LabPlanName)+$($config.LabName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
-
-            return JobManager -currentjobs $jobs -ResultColumnName "RemoveLabResult"
+    
+            Write-Verbose "Job count: $($jobs.Count)"
+            return JobManager -currentJobs $jobs -ResultColumnName "RemoveLabResult"
         }
 
         Remove-AzLabs-Jobs -ConfigObject $aggregateLabs
@@ -1176,14 +1219,15 @@ function Publish-AzLabsBulk {
             Write-Host "Starting publishing of all labs in parallel. Can take a while."
             $jobs = @()
 
-            $ConfigObject | ForEach-Object {
-                Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+             # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+             foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name  ("$($config.ResourceGroupName)+$($config.LabPlanName)+$($config.LabName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
 
             return JobManager -currentJobs $jobs -ResultColumnName "PublishResult" -ConfigObject $ConfigObject
         }
-
        
         # Added switch to either create labs and publish or just publish existing lab
         # Capture the results so they don't end up on the pipeline
@@ -1273,12 +1317,15 @@ function Sync-AzLabADUsersBulk {
             Write-Host "Starting ADGroup sync of all labs in parallel. Can take a while."
             $jobs = @()
 
-            $ConfigObject | ForEach-Object {
-                Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name $_.LabName -ThrottleLimit $ThrottleLimit
+            # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+            foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name $_.LabName -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
-
-            return JobManager -currentJobs $jobs -ResultColumnName "SyncUserResult"
+    
+                Write-Verbose "Job count: $($jobs.Count)"
+                return JobManager -currentJobs $jobs -ResultColumnName "SyncUserResult"
         }
 
         Sync-AzLabADUsers-Jobs   -ConfigObject $aggregateLabs
@@ -1356,9 +1403,11 @@ function Get-AzLabsRegistrationLinkBulk {
 
             $jobs = @()
 
-            $ConfigObject | ForEach-Object {
-                Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+            # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+            foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name  ("$($config.ResourceGroupName)+$($config.LabPlanName)+$($config.LabName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
 
             return JobManager -currentJobs $jobs -ResultColumnName "RegistrationLinkResult" -ConfigObject $ConfigObject
@@ -1616,12 +1665,15 @@ function Send-AzLabsInvitationBulk {
             Write-Host "Sending lab invitations to users.  This may take awhile."
             $jobs = @()
 
-            $ConfigObject | ForEach-Object {
-            Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+            # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+            foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name  ("$($config.ResourceGroupName)+$($config.LabPlanName)+$($config.LabName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
 
             return JobManager -currentJobs $jobs -ResultColumnName "SendInvitationResult" -ConfigObject $ConfigObject
+            
          }
 
          Send-AzLabsInvitation-Jobs -ConfigObject $aggregateLabs 
@@ -1869,13 +1921,15 @@ function Confirm-AzLabsBulk {
             }
 
             $jobs = @()
-            
-            $ConfigObject | ForEach-Object {
-                Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot, $ExpectedLabState -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit                
+
+             # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+             foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $config -Name  ("$($config.ResourceGroupName)+$($config.LabPlanName)+$($config.LabName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
 
-            return JobManager -currentjobs $jobs -ResultColumnName "ConfirmLabResult" -ConfigObject $ConfigObject
+            return JobManager -currentJobs $jobs -ResultColumnName "ConfirmLabResult" -ConfigObject $ConfigObject
         }
 
         # Get-RegistrationLink-Jobs returns the config object with an additional column, we need to leave it on the pipeline
