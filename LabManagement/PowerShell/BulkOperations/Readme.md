@@ -62,22 +62,24 @@ Item              | Description
 ----------------- | -------------
 Id                | A unique id for the lab
 Tags              | A set of tags applied to the lab.
-ResourceGroupName | The name of the resource group that the lab account will be created in.  If the resource group doesn't already exist, it will be created.
-Location          | The region that the Lab will be created in, if the lab doesn't already exist.  If the Lab (by LabName) already exists, this row is skipped.
-LabPlanName       | The name of the Lab Plan to be created, if the lab plan doesn't already exist or if different will be adjusted to the defaults.
-LabName           | The name of the Lab to be created
+ResourceGroupName | The name of the resource group that the lab plan will be created in.  If the resource group doesn't already exist, it will be created.
+Location          | The region that the Lab will be created in, if the lab doesn't already exist.  If the Lab in the Lab Plan's resource group already exists, this row is skipped.
+LabPlanName       | The name of the Lab Plan to be created, if the lab plan doesn't already exist or if different will be adjusted to the defaults.  If your lab plan needs advanced networking, we recommend that you manually create your lab plan and only use this script for deploying labs.
+LabName           | The name of the Lab to be created.
 ImageName         | The image name that the lab will be based on.  Wildcards are accepted, but the ImageName field should match only 1 image.
 AadGroupId        | The AadGroupId, used to connect the lab for syncing users.  Used to enable Microsoft Teams support for this lab.
 MaxUsers          | Maximum number of users expected for the lab.
-UsageQuota        | Maximum quota per student
+UsageQuota        | Maximum quota per student.
 UsageMode         | Type of usage expected for the lab.  Either "Restricted" - only those who are registered in the lab, or "Open" anyone.
 SharedPassword    | Enabled\Disabled values indicate whether the lab should use a shared password.  "Enabled" means the lab uses a single shared password for the student's virtual machines, "Disabled" means the students will be prompted to change their password on first login.
 Size              | The Virtual Machine size to use for the Lab. Please see details below on how these map to the Azure Portal.
 Title             | The title for the lab.
 Descr             | The description for the lab.
-UserName          | The default user name
-Password          | The default password
-LinuxRdp          | Set to "True" if the Virtual Machine requires Linux RDP, otherwise "False"
+UserName          | The default username for admin account.
+Password          | The default password for admin account.
+NonAdminUserName  | Username for optional non-admin account.
+NonAdminPassword  | Password for optional non-admin account.
+LinuxRdp          | Set to "True" if the Virtual Machine requires Linux RDP, otherwise "False".
 Emails            | Semicolon separated string of student emails to be added to the lab.  For example:  "bob@test.com;charlie@test.com"
 LabOwnerEmails    | Semicolon separated string of teacher emails to be added to the lab.  The teacher will get Owner rights to the lab, and Reader rights to the Lab Account.  NOTE: this account must exist in Azure Active Directory tenant.
 Invitation        | Note to include in the invitation email to students.  If you leave this field blank, invitation emails won't be sent during lab creation.
@@ -100,14 +102,43 @@ TimeZoneId        | Time zone for the classes.  "Central Standard Time"
 Notes             | Additional notes
 
 ## Virtual Machine Sizes
-The Azure Portal shows sizes with a friendly name when creating a lab and the API takes specific strings that map to those friendly names.  Listed below is the mapping between these.  More information can be found in the [Lab Services Admin Guide](https://docs.microsoft.com/en-us/azure/lab-services/administrator-guide#vm-sizing) which includes information on the VM series.
-Friendly Name                  | API Size
--------------------------------|------------------------
-Small                          | Classic_Fsv2_2_4GB_128_S_SSD
-Medium                         | Classic_Fsv2_4_8GB_128_S_SSD
-Medium (nested virtualization) | Classic_Dsv4_4_16GB_128_P_SSD
-Large                          | Classic_Fsv2_8_16GB_128_S_SSD
-Large (nested virtualization)  | Classic_Dsv4_8_32GB_128_P_SSD
-Small GPU (visualization)      | Classic_NVv4_8_28GB_128_S_SSD  
-Small GPU (Compute)            | Classic_Ncv3t4_8_56GB_128_S_SSD
-Medium GPU (visualization)     | Classic_Nvv4_16_56GB_128_S_SSD
+There are three categories of VM sizes that you can use: **Default VM sizes**, **Alternative VM sizes**, and **Classic VM sizes**.   More information can be found in the [Lab Services Admin Guide](https://docs.microsoft.com/azure/lab-services/administrator-guide#vm-sizing).
+
+When you use the bulk deployment script to create labs, you must specify either the VM SKU Name or VM SKU Size that is expected by the underlying API.  If you specify the friendly name shown in the portal, you will get an error.
+
+For the **Default VM sizes**, the following table shows the mapping between the friendly name shown in the portal and the underlying VM SKU Name/Size expected by the API.
+
+Friendly Name (shown in portal)| Underlying VM SKU Name | Underlying VM SKU Size           
+-------------------------------|---------------------------------------------------------
+Small                          | Basic                  | Fsv2_2_4GB_128_S_SSD
+Medium                         | Standard               | Fsv2_4_8GB_128_S_SSD
+Medium (nested virtualization) | Virtualization         | Dsv4_4_16GB_128_P_SSD
+Large                          | Large                  | Fsv2_8_16GB_128_S_SSD
+Large (nested virtualization)  | Performance            | Dsv4_8_32GB_128_P_SSD
+Small GPU (visualization)      | SmallGPUVisualization  | NVv4_8_28GB_128_S_SSD  
+Small GPU (Compute)            | SmallGPUCompute        | Ncv3t4_8_56GB_128_S_SSD
+Medium GPU (visualization)     | MediumGPUVisualization | NVv3_12_112GB_128_S_SSD
+
+For the **Alternative VM sizes**, it's easiest to specify the underlying VM SKU Size.  The following table shows the mapping between the friendly name in the portal and the underlying VM SKU Size expected by the API.
+
+Friendly Name (shown in portal)   | Underlying VM SKU Size
+----------------------------------|---------------------------------------
+Alt. Small GPU (compute)          | NCsv3_6_112GB_128_S_SSD
+Alt. Small GPU (visualization)    | NVadsA10v5_6_55GB_128_S_SSD
+Alt. Medium GPU (visualization)   | NVadsA10v5_12_110GB_128_S_SSD
+
+Likewise, for the **Classic VM sizes**, it's easiest to specify the underlying VM SKU Size.  The following table shows the mapping between the friendly name in the portal and the underlying VM SKU Size expected by the API.
+
+Friendly Name (shown in portal)   | Underlying VM SKU Size
+----------------------------------|---------------------------------------
+Classic Small                     | Av2_2_4GB_128_S_SSD   
+Classic Medium                    | Av2_4_8GB_128_S_SSD 
+Classic Large                     | Av2_8_16GB_128_S_SSD  
+Classic Medium (nested virt.)     | Dsv3_4_16GB_128_P_SSD
+Classic Large (nested virt.)      | Dsv3_8_32GB_128_P_SSD
+Classic Small GPU (compute)       | NC_6_56GB_128_S_SSD
+Classic Small GPU (visualization) | NV_6_56GB_128_S_SSD
+Classic Medium GPU (visualization)| NVv3_12_112GB_128_S_SSD
+
+## Troubleshooting
+To get more detailed logging to debug issues, we recommend that you follow the steps in this article: [Enable debug logging](https://learn.microsoft.com/powershell/azure/troubleshooting?view=azps-11.1.0#enable-debug-logging).  Remember to use -Verbose flag when calling the module to see the verbose messages.
