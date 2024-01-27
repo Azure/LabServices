@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "VMConfigurations": {
+      "type": "array",
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "Name": {
+              "type": "string"
+            },
+            "Properties": {
+              "type": "object",
+              "properties": {
+                "ProcessorCount": {
+                  "type": "integer"
+                },
+                "Memory": {
+                  "type": "object",
+                  "properties": {
+                    "Startup": {
+                      "type": "string"
+                    },
+                    "DynamicMemoryEnabled": {
+                      "type": "boolean"
+                    },
+                    "Minimum": {
+                      "type": "string"
+                    },
+                    "Maximum": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": [
+            "Name",
+            "Properties"
+          ]
+        }
+      ]
+    }
+  },
+  "required": [
+    "VMConfigurations"
+  ]
+}

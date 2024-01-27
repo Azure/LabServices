@@ -1,0 +1,17 @@
+{
+    "$schema": "https://raw.githubusercontent.com/Azure/LabServices/main/ClassTypes/PowerShell/HyperV/hyperv-check-vm/vm-config-schema.json",
+    "VMConfigurations": [
+        {
+            "Name": "my-vm",
+            "Properties": {
+                "ProcessorCount": 1,
+                "Memory": {
+                    "Startup": "512MB",
+                    "DynamicMemoryEnabled": true,
+                    "Minimum": "512MB",
+                    "Maximum": "1GB"
+                }
+            }
+        }
+    ]
+}
