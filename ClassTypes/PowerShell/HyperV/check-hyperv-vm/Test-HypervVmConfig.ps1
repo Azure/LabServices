@@ -1,5 +1,6 @@
 #Requires -RunAsAdministrator
 #Requires -Version 5.0
+#Requires -Modules Hyper-V
 
 <#
 The MIT License (MIT)
@@ -348,7 +349,10 @@ try {
 
     $vms = @(Get-VM)
 
-    if ($vms.Count -gt 0) {
+    if ($vms.Count -eq 0) {
+        Write-Warning "No Hyper-V VMs found to test."
+    }
+    else {
 
         Write-Host "******************************"
         Write-Host "*    Testing HYPER-V VMs     *"
