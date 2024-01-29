@@ -1,6 +1,6 @@
 # Check my Hyper-V VMs
 
-[Test-HypervVmConfig](./Test-HypervVmConfig.ps1) will verify you setup follows best practices for nested virtualization.  
+[Test-HypervVmConfig](./Test-HypervVmConfig.ps1) will verify you setup follows best practices when using nested virtualization in Azure Lab Services.  It is recommended to run this script on a lab's template VM before publishing the lab.
 
 For all local users:
 
@@ -22,7 +22,7 @@ For the host VM:
 
 ## Usage
 
-In an Adminstrator PowerShell window, run:
+On the host VM (not the Hyper-V VMs), open an Adminstrator PowerShell window.  Run the following command?
 
 ```powershell
 ./Test-HypervVmConfig.ps1
