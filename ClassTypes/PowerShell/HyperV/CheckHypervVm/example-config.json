@@ -1,5 +1,5 @@
 {
-    "$schema": "https://raw.githubusercontent.com/Azure/LabServices/main/ClassTypes/PowerShell/HyperV/hyperv-check-vm/vm-config-schema.json",
+    "$schema": "https://raw.githubusercontent.com/Azure/LabServices/main/ClassTypes/PowerShell/HyperV/CheckHypervVm/vm-config-schema.json",
     "VMConfigurations": [
         {
             "Name": "my-vm",
