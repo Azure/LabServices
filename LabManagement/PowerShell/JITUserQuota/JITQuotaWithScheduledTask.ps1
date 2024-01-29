@@ -36,7 +36,7 @@ if (-not (Get-Command -Name "Get-AzLabServicesLab" -ErrorAction SilentlyContinue
 Import-Module Az
 Import-Module "..\BulkOperations\Az.LabServices.BulkOperations.psm1" -Force
     
-#Connect-AzAccount -Subscription $subId -Identity
+Connect-AzAccount -Subscription $subId -Identity
 Write-Output "Lab quota update start at $(Get-Date)"
 
 # create a temp file for host output
