@@ -317,7 +317,8 @@ try {
     Write-Host "* Checking User Permissions  *"
     Write-Host "******************************"
 
-    # Try to find other users on the machines, if there is one, then ask if they should be added to the "Hyper-V Administrators" group
+    # Try to find other users on the machines, if there is one.
+    # To use Hyper-V, local user must be in the 'Administrator' group or the 'Hyper-V Administrators' group.
     $addedLocalUsers = @(Get-AddedLocalUser)
     if ($addedLocalUsers.Count -gt 0) {
  
