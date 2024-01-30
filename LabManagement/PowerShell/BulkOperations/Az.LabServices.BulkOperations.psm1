@@ -270,6 +270,10 @@ function Import-LabsCsv {
             #Assign to empty array since New-AzLab expects this property to exist, but this property should be optional in the csv
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "Schedules" -Value @() 
         }
+
+        if ((Get-Member -InputObject $_ -Name 'LabOwnerEmails') -and ($_.LabOwnerEmails)) {
+            Write-Warning "LabOwnerEmails is deprecated and has been removed.  If you require this column for scenarios, please log an issue."
+        }
     }
 
     Write-Verbose ($labs | ConvertTo-Json -Depth 40 | Out-String)
@@ -724,7 +728,7 @@ function New-AzLabsBulk {
                         ResourceGroupName = $obj.ResourceGroupName;
                         Location = $obj.Location;
                         Title = $obj.Title;
-                        Description = $obj.LabName;
+                        Description = $obj.Descr;
                         AdminUserPassword = $(ConvertTo-SecureString $obj.Password -AsPlainText -Force);
                         AdminUserUsername = $obj.UserName;
                         AdditionalCapabilityInstallGpuDriver = $obj.GpuDriverEnabled;

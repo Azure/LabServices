@@ -34,8 +34,19 @@ if (-not (Get-Command -Name "Get-AzLabServicesLab" -ErrorAction SilentlyContinue
 }
 
 Import-Module Az
-Import-Module "..\BulkOperations\Az.LabServices.BulkOperations.psm1" -Force
-    
+
+$relativePath = "..\BulkOperations\Az.LabServices.BulkOperations.psm1"
+$currentDirPath = Join-Path -Path (Get-Location) -ChildPath "Az.LabServices.BulkOperations.psm1"
+
+if (Test-Path -Path $relativePath) {
+    Import-Module $relativePath -Force
+} elseif (Test-Path -Path $currentDirPath) {
+    Import-Module $currentDirPath -Force
+} else {
+    Write-Error "BulkOperations.psm1 not found in the provided relative path or the current directory."
+    return
+}
+
 Connect-AzAccount -Subscription $subId -Identity
 Write-Output "Lab quota update start at $(Get-Date)"
 

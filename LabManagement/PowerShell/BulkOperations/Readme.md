@@ -73,7 +73,7 @@ UsageQuota        | Maximum quota per student.
 UsageMode         | Type of usage expected for the lab.  Either "Restricted" - only those who are registered in the lab, or "Open" anyone.
 SharedPassword    | Enabled\Disabled values indicate whether the lab should use a shared password.  "Enabled" means the lab uses a single shared password for the student's virtual machines, "Disabled" means the students will be prompted to change their password on first login.
 Size              | The Virtual Machine size to use for the Lab. Please see details below on how these map to the Azure Portal.
-Title             | The title for the lab.
+Title             | The title for the lab.  This is the value that the students/teachers will see for the name of the lab in the labs.azure.com portal.
 Descr             | The description for the lab.
 UserName          | The default username for admin account.
 Password          | The default password for admin account.
