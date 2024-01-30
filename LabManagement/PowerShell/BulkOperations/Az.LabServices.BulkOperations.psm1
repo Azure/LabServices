@@ -221,14 +221,6 @@ function Import-LabsCsv {
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "Emails" -Value @() 
         }
 
-        if ((Get-Member -InputObject $_ -Name 'LabOwnerEmails') -and ($_.LabOwnerEmails)) {
-            $_.LabOwnerEmails = ($_.LabOwnerEmails.Split(';')).Trim()
-        }
-        elseif (!(Get-Member -InputObject $_ -Name 'LabOwnerEmails')) {
-            #Assign to empty array since New-AzLab expects this property to exist, but this property should be optional in the csv
-            Add-Member -InputObject $_ -MemberType NoteProperty -Name "LabOwnerEmails" -Value @() 
-        }
-
         if (!(Get-Member -InputObject $_ -Name 'SharedPassword')) {
             Write-Warning "Missing lab's SharedPassword value - defaulting to 'Enabled'.  Column name: SharedPassword."
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "SharedPassword" -Value 'Enabled'
@@ -277,6 +269,10 @@ function Import-LabsCsv {
         elseif (!(Get-Member -InputObject $_ -Name 'Schedules')) {
             #Assign to empty array since New-AzLab expects this property to exist, but this property should be optional in the csv
             Add-Member -InputObject $_ -MemberType NoteProperty -Name "Schedules" -Value @() 
+        }
+
+        if ((Get-Member -InputObject $_ -Name 'LabOwnerEmails') -and ($_.LabOwnerEmails)) {
+            Write-Warning "LabOwnerEmails is deprecated and has been removed.  If you require this column for scenarios, please log an issue."
         }
     }
 
@@ -732,7 +728,7 @@ function New-AzLabsBulk {
                         ResourceGroupName = $obj.ResourceGroupName;
                         Location = $obj.Location;
                         Title = $obj.Title;
-                        Description = $obj.LabName;
+                        Description = $obj.Descr;
                         AdminUserPassword = $(ConvertTo-SecureString $obj.Password -AsPlainText -Force);
                         AdminUserUsername = $obj.UserName;
                         AdditionalCapabilityInstallGpuDriver = $obj.GpuDriverEnabled;
@@ -777,26 +773,6 @@ function New-AzLabsBulk {
                     if ((Get-Member -InputObject $obj -Name 'AadGroupId') -and ($obj.AadGroupId)) {
                         Write-Host "syncing users from AAD ..."
                         Sync-AzLabServicesLabUser -LabName $lab.Name -ResourceGroupName $obj.ResourceGroupName | Out-Null
-                    }
-                    
-                    # If we have any lab owner emails, we need to assign the RBAC permission
-                    if ($obj.LabOwnerEmails) {
-                        Write-Host "Adding Lab Owners: $($obj.LabOwnerEmails) ."
-                        $obj.LabOwnerEmails | ForEach-Object {
-                            # Need to ensure we didn't get an empty string, in case there's an extra delimiter
-                            if ($_) {
-                                # Check if Lab Owner role already exists (the role assignment is added by default by the person who runs the script), if not create it
-                                $userPrincipalName = (Get-AzAdUser -Mail $_).UserPrincipalName
-                                if (-not (Get-AzRoleAssignment -SignInName $userPrincipalName -Scope $currentLab.id -RoleDefinitionName Owner)) {
-                                    New-AzRoleAssignment -SignInName $userPrincipalName -Scope $currentLab.id -RoleDefinitionName Owner | Out-Null
-                                }
-                                # Check if the lab account reader role already exists, if not create it
-                                if (-not (Get-AzRoleAssignment -SignInName $userPrincipalName -ResourceGroupName $obj.ResourceGroupName -ResourceName $obj.LabPlanName -ResourceType "Microsoft.LabServices/LabPlans" -RoleDefinitionName Reader)) {
-                                    New-AzRoleAssignment -SignInName $userPrincipalName -ResourceGroupName $obj.ResourceGroupName -ResourceName $obj.LabPlanName -ResourceType "Microsoft.LabServices/LabPlans" -RoleDefinitionName Reader | Out-Null 
-                                }
-                            }
-                        }
-                        Write-Host "Added Lab Owners: $($obj.LabOwnerEmails)." -ForegroundColor Green
                     }
                 }
                 
@@ -1508,12 +1484,18 @@ function Reset-AzLabUserQuotaBulk {
             }
         }
 
-        $jobs = $aggregateLabs | ForEach-Object {
-                Write-Verbose "From config: $_"
-                Start-ThreadJob -ScriptBlock $block -ArgumentList $_, $PSScriptRoot -Name $_.LabName -ThrottleLimit $ThrottleLimit
-            }
+        Write-Host "Update user quotas."
+        $jobs = @()
 
-        JobManager -currentJobs $jobs -ResultColumnName "ResetQuotaResult"
+        # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+        foreach ($config in $aggregateLabs) {
+            Write-Verbose "From config: $config"
+            $jobs += Start-ThreadJob -ScriptBlock $block -ArgumentList $config, $PSScriptRoot -Name ("$($config.LabName)") -ThrottleLimit $ThrottleLimit
+            Start-Sleep -Seconds 1
+        }
+
+        Write-Verbose "Job count: $($jobs.Count)"
+        return JobManager -currentJobs $jobs -ResultColumnName "ResetQuotaResult"
     }
 }
 
@@ -1583,12 +1565,18 @@ function Remove-AzLabUsersBulk {
             }
         }
 
-        $jobs = $aggregateLabs | ForEach-Object {
-                Write-Verbose "From config: $_"
-                Start-ThreadJob -ScriptBlock $block -ArgumentList $_, $PSScriptRoot -Name $_.LabName -ThrottleLimit $ThrottleLimit
-            }
+        Write-Host "Remove lab users."
+        $jobs = @()
 
-        JobManager -currentJobs $jobs -ResultColumnName "RemoveUserResult"
+        # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+        foreach ($config in $aggregateLabs) {
+            Write-Verbose "From config: $config"
+            $jobs += Start-ThreadJob -ScriptBlock $block -ArgumentList $config, $PSScriptRoot -Name ("$($config.LabName)") -ThrottleLimit $ThrottleLimit
+            Start-Sleep -Seconds 1
+        }
+
+        Write-Verbose "Job count: $($jobs.Count)"
+        return JobManager -currentJobs $jobs -ResultColumnName "RemoveUserResult"
     }
 }
 
@@ -1758,14 +1746,17 @@ function Add-AzLabsUsersBulk {
 
             Write-Host "Adding users to lab.  This may take awhile."
             $jobs = @()
-
-            $ConfigObject | ForEach-Object {
-            Write-Verbose "From config: $_"
-                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -InputObject $_ -Name ("$($_.ResourceGroupName)+$($_.LabPlanName)+$($_.LabName)") -ThrottleLimit $ThrottleLimit
+ 
+            # Stagger starting threads to avoid Azure KeyStore locked error that an occur when too many threads are started in parallel
+            foreach ($config in $ConfigObject) {
+                Write-Verbose "From config: $config"
+                $jobs += Start-ThreadJob  -InitializationScript $init -ScriptBlock $block -ArgumentList $PSScriptRoot -Name ("$($config.ResourceGroupName)+$($config.LabPlanName)+$($config.LabName)") -ThrottleLimit $ThrottleLimit
+                Start-Sleep -Seconds 1
             }
-
-            return JobManager -currentJobs $jobs -ResultColumnName "AddUserResult" -ConfigObject $ConfigObject
-         }
+ 
+            Write-Verbose "Job count: $($jobs.Count)"
+            return JobManager -currentJobs $jobs -ResultColumnName "AddUserResult" ConfigObject $ConfigObject
+        }
 
          Add-AzLabsUser-Jobs -ConfigObject $aggregateLabs 
     }
@@ -1917,7 +1908,6 @@ function Confirm-AzLabsBulk {
                         Write-Error "Unexpected number of VMs in succeeded state"
                     }
                 }
-        
             }
 
             $jobs = @()

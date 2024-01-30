@@ -11,7 +11,7 @@ $excludeLabs = @('*test*','*demo*','*training*', '*how to*')
 # Number of available hours we reset the student to when running this script
 $usageQuota = 9
 
-# Segment of labs to update based on lab accounts, regular expression to match
+# Segment of labs to update based on lab plans, regular expression to match
 
 # Match for all lab plans
 $labPlanNameRegex = "^.*"
@@ -77,7 +77,8 @@ try {
         }
         if ($toExclude) 
             {
-                Write-Output "   Excluding Lab '$labName'" 6>> $HostOutputFile.FullName
+                # Can't write output to the hostfile because it breaks the filtering, so we'll just write to the terminal
+                Write-Host "excluding $labName "
                 $false
             } 
         else {$true}

@@ -73,7 +73,7 @@ UsageQuota        | Maximum quota per student.
 UsageMode         | Type of usage expected for the lab.  Either "Restricted" - only those who are registered in the lab, or "Open" anyone.
 SharedPassword    | Enabled\Disabled values indicate whether the lab should use a shared password.  "Enabled" means the lab uses a single shared password for the student's virtual machines, "Disabled" means the students will be prompted to change their password on first login.
 Size              | The Virtual Machine size to use for the Lab. Please see details below on how these map to the Azure Portal.
-Title             | The title for the lab.
+Title             | The title for the lab.  This is the value that the students/teachers will see for the name of the lab in the labs.azure.com portal.
 Descr             | The description for the lab.
 UserName          | The default username for admin account.
 Password          | The default password for admin account.
@@ -81,7 +81,7 @@ NonAdminUserName  | Username for optional non-admin account.
 NonAdminPassword  | Password for optional non-admin account.
 LinuxRdp          | Set to "True" if the Virtual Machine requires Linux RDP, otherwise "False".
 Emails            | Semicolon separated string of student emails to be added to the lab.  For example:  "bob@test.com;charlie@test.com"
-LabOwnerEmails    | Semicolon separated string of teacher emails to be added to the lab.  The teacher will get Owner rights to the lab, and Reader rights to the Lab Account.  NOTE: this account must exist in Azure Active Directory tenant.
+LabOwnerEmails    | [DEPRECATED] This column is no longer supported; if you need support for this column, please log an issue.
 Invitation        | Note to include in the invitation email to students.  If you leave this field blank, invitation emails won't be sent during lab creation.
 Schedules         | The name of the csv file that contains the schedule for this class.  For example: "charms.csv".  If left blank, a schedule won't be applied.
 TemplateVmState   | Enabled\Disabled values indicate whether the lab should have a template VM created.
@@ -108,8 +108,8 @@ When you use the bulk deployment script to create labs, you must specify either 
 
 For the **Default VM sizes**, the following table shows the mapping between the friendly name shown in the portal and the underlying VM SKU Name/Size expected by the API.
 
-Friendly Name (shown in portal)| Underlying VM SKU Name | Underlying VM SKU Size           
--------------------------------|---------------------------------------------------------
+Friendly Name (shown in portal)| Underlying VM SKU Name | Underlying VM SKU Size
+-------------------------------|------------------------|--------------------------------
 Small                          | Basic                  | Fsv2_2_4GB_128_S_SSD
 Medium                         | Standard               | Fsv2_4_8GB_128_S_SSD
 Medium (nested virtualization) | Virtualization         | Dsv4_4_16GB_128_P_SSD
