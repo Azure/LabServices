@@ -24,14 +24,16 @@ To create a lab using the following instructions, you must have
      ```
 
 1. Run `Create-EthicalHackingLabplanAndLab.ps1` script.
-     > [!NOTE]
-     > Run `Get-help .\Create-EthicalHackingLabplanAndLab.ps1 -Detailed` to see more information about script.
 
      ```powershell
           Install-Module 'Az' -Force
           Login-AzAccount 
           ./Create-EthicalHackingLabplanAndLab.ps1 -UserName "AdminUser" -Password $(ConvertTo-SecureString "<password>" -AsPlainText -Force) -Location "centralus"
      ```
+
+> [!NOTE]
+> Run `Get-help .\Create-EthicalHackingLabplanAndLab.ps1 -Detailed` to see more information about script.
+
 
 1. Open the [Azure Labs Services website](https://labs.azure.com) and login with your Azure credentials to see the lab created by this script.
 
@@ -54,23 +56,44 @@ This script will help prepare your template virtual machine for a ethical hackin
 
 ### Directions
 
-1. Open the [Azure Labs Services website](https://labs.azure.com) and login with your Azure credentials to see the lab created by this script.
+1. Open the [Azure Labs Services website](https://labs.azure.com) and login with your Azure credentials to see the lab created by script in Part 1.
 1. [Connect to template machine](https://learn.microsoft.com/azure/lab-services/how-to-create-manage-template#update-a-template-vm) for your lab.
 1. Download the `SetupForNestedVirtualization.ps1` and `Setup-EthicalHacking.ps1` and PowerShell scripts onto the **Template Virtual Machine**:
 
      ```powershell
-     Invoke-WebRequest "https://raw.githubusercontent.com/Azure/LabServices/main/ClassTypes/PowerShell/HyperV/SetupForNestedVirtualization.ps1" -OutFile "SetupForNestedVirtualization.ps1"
-
-     Invoke-WebRequest "https://raw.githubusercontent.com/Azure/LabServices/main/ClassTypes/PowerShell/EthicalHacking/Setup-EthicalHacking.ps1" -OutFile "Setup-EthicalHacking.ps1"
-     ```
+     Invoke-WebRequest 'https://aka.ms/azlabs/scripts/hyperV-powershell' -Outfile SetupForNestedVirtualization.ps1
+     Invoke-WebRequest ' https://aka.ms/azlabs/scripts/EthicalHacking-powershell' -Outfile Setup-EthicalHacking.ps1
+    ```
 
 1. Open a PowerShell window.  Make sure that the window notes it is running under *administrator* privileges.
 1. Run `SetupForNestedVirtualization.ps1`.  This installs the necessary features to create HyperV virtual machines.
 
-    > [!NOTE]
-    > The script may ask you to restart the machine and re-run it.  A note that the script is completed will show in the PowerShell window when no further action is needed.
+    ```powershell
+    .\SetupForNestedVirtualization.ps1
+    ```
+
+> [!NOTE]
+> The script may ask you to restart the machine and re-run it.  A note that the script is completed will show in the PowerShell window when no further action is needed.
 
 1. Run `Setup-EthicalHacking.ps1`
 
-     > [!WARNING]
-     > Use `Setup-EthicalHacking.ps1 -Force` will cause any software to be installed silently.  By using the Force switch you are automatically accepting the terms for the installed software.  
+    If you are using Windows 10 or Windows 11, the following command:
+
+     ```powershell
+     .\Setup-EthicalHacking.ps1 -SwitchName 'Default Switch'
+     ```
+
+    If you are using Windows Server, the following command.
+
+     ```powershell
+     .\Setup-EthicalHacking.ps1 
+    ```
+
+    Consider enabling Hyper-V [DHCP guard](/archive/blogs/virtual_pc_guy/hyper-v-networkingdhcp-guard) and [Router guard](/archive/blogs/virtual_pc_guy/hyper-v-networkingrouter-guard).
+
+    ```powershell
+    Get-VMNetworkAdapter * | Set-VMNetworkAdapter -RouterGuard On -DhcpGuard On
+    ```
+
+> [!WARNING]
+> Use `Setup-EthicalHacking.ps1 -Force` will cause any software to be installed silently.  By using the Force switch you are automatically accepting the terms for the installed software.  
