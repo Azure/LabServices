@@ -322,8 +322,8 @@ function Get-KaliLinuxDisk {
     [CmdletBinding()]
     param()
 
-    $_kaliLinuxVersion = '2023.3'
-    $_kaliLinuxBaseFileName = "kali-linux-$($_kaliLinuxVersion)a-hyperv-amd64"
+    $_kaliLinuxVersion = '2023.4'
+    $_kaliLinuxBaseFileName = "kali-linux-$($_kaliLinuxVersion)-hyperv-amd64"
     $_kaliLinuxVhdxFileName = "$($_kaliLinuxBaseFileName).vhdx"
 
     $_kaliLinuxExtractedFilesFolder = "$env:PUBLIC\Documents\Hyper-V\Virtual hard disks"
