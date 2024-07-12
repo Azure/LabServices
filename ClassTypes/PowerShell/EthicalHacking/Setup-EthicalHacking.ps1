@@ -322,7 +322,7 @@ function Get-KaliLinuxDisk {
     [CmdletBinding()]
     param()
 
-    $_kaliLinuxVersion = '2023.4'
+    $_kaliLinuxVersion = '2024.2'
     $_kaliLinuxBaseFileName = "kali-linux-$($_kaliLinuxVersion)-hyperv-amd64"
     $_kaliLinuxVhdxFileName = "$($_kaliLinuxBaseFileName).vhdx"
 
