@@ -1,5 +1,8 @@
 # Lab Services
 
+> [!IMPORTANT]  
+> Azure Lab Services will be retired on June 28, 2027. [Click here](https://aka.ms/azlabs-retirementguide) for more information. We will not be taking any future requests or fixes. 
+
 This repository contains samples extending the Azure Lab Services (post August 2022 update) experience.  
 
 Contributions are welcome!  If there is something that you want, feel free to create an issue or pull request.
